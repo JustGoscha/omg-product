@@ -1,0 +1,10 @@
+name: Acme Field
+locale: en
+today: 2026-10-14
+brand:
+  css: brand/tokens.css
+roadmap:
+  streams:
+    - { id: core, name: Core team, capacity: 2 }
+    - { id: mobile, name: Mobile pair, capacity: 1.5 }
+    - { id: student, name: Working student, capacity: 0.5 }
