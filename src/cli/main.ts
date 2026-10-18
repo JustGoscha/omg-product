@@ -13,6 +13,7 @@ import { Runner, describeAgent } from "../core/agent-runner.ts";
 import { linearPull } from "./linear.ts";
 import { checkPrototype, formatCheck, prototypeTargets } from "../core/proto-check.ts";
 import * as tpl from "./templates.ts";
+import { exportStatic } from "./export.ts";
 
 const HELP = `omgp — product harness: roadmap, prototypes and decision sessions as files
 
@@ -45,6 +46,7 @@ const HELP = `omgp — product harness: roadmap, prototypes and decision session
                                        add a team rule to rules.md (agents follow it over the skills);
                                        --upstream prints a proposal for the shared omgp skills instead
   omgp skills install [--target claude|agents|opencode|pi] [--dir path] [--link]
+  omgp export [--out dir]              static read-only studio of the workspace (a demo for any static host)
   omgp update                          update a git checkout of omgp (the Claude Code plugin updates itself)
   omgp version
 
@@ -202,6 +204,12 @@ async function main() {
       for (const l of formatCheck(res, `projects/${project.id}/${t.rel}`)) console.log(l);
     }
     process.exit(bad ? 1 : 0);
+  }
+
+  if (cmd === "export") {
+    const out = resolve(str(flags.out) ?? "omgp-export");
+    const r = exportStatic(root, out);
+    return console.log(`static read-only studio in ${r.outDir} (${r.projects} projects, ${r.sessions} sessions). Serve the folder with any static host.`);
   }
 
   if (cmd === "roadmap") return printRoadmap(ws, !!flags.json);

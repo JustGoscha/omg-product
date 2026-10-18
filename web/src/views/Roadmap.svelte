@@ -711,7 +711,7 @@
               </a>
               <div class="lane" style="width:{width}px">
                 {#if !b}
-                  <button class="nodate" class:dragging={drag?.id === p.id} onpointerdown={(e) => startDrag(e, p, "nodate")}>{t.noDate}</button>
+                  <button class="nodate" class:dragging={drag?.id === p.id} onpointerdown={(e) => startDrag(e, p, "nodate")}>{isStatic ? t.demo.noDate : t.noDate}</button>
                 {:else if b.off === "right"}
                   <button class="offchip right" onclick={() => reveal(p.id)} style="--c:{colorOf(p)}">→ {short(b.s.start)}</button>
                 {:else if b.off === "left"}

@@ -25,7 +25,7 @@ export const REPO_URL = "https://github.com/JustGoscha/omg-product";
 export const snapshotPath = (apiPath: string) => `${apiPath.replace(/^\//, "")}.json`;
 
 // GitHub Pages serves every project of a user from one origin: keep demos apart by path
-const storageKey = (project: string, session: string) => `omgp:demo:${location.pathname}:${project}/${session}`;
+const storageKey = (project: string, session: string) => `omgp:demo:${location.pathname.replace(/index\.html$/, "")}:${project}/${session}`;
 
 interface Saved {
   results: ResultsT;

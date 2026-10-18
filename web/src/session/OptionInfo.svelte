@@ -100,6 +100,7 @@
     <div class="body"><EditableText value={o.body} onsave={save("body")} multiline markdown placeholder="+ details" disabled={!review}><div class="md">{@html md(o.body)}</div></EditableText></div>
   {/if}
 
+  {#if review || o.pros?.length || o.cons?.length}
   <div class="pc">
     <div>
       <h3 class="pro">{t.pros}</h3>
@@ -114,6 +115,7 @@
       {:else}<ul>{#each o.cons ?? [] as x}<li>{@html mdInline(x)}</li>{/each}</ul>{/if}
     </div>
   </div>
+  {/if}
   {#each [["enables", t.enables], ["forecloses", t.forecloses]] as const as [field, label]}
     {#if o[field]?.length || review}
       <div class="later">

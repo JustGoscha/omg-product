@@ -20,6 +20,7 @@ const MARKER = "static.json";
 
 export interface ExportSummary {
   outDir: string;
+  workspace: string;
   projects: number;
   sessions: number;
   files: number;
@@ -32,22 +33,39 @@ export function exportStatic(root: string, outDir: string): ExportSummary {
   for (const [what, dir] of [["the workspace", root], ["omgp itself", PKG_ROOT], ["the studio build", WEB_DIST]] as const)
     if (inside(dir, outDir)) throw new Error(`cannot export into ${outDir}: it would replace ${what}`);
   if (inside(outDir, WEB_DIST)) throw new Error(`cannot export into the studio build (${WEB_DIST})`);
+  checkTarget(outDir);
 
   const web = ensureWebBuild();
-  prepare(outDir);
+  rmSync(outDir, { recursive: true, force: true });
+  mkdirSync(outDir, { recursive: true });
+  cpSync(web, outDir, { recursive: true });
+  const summary = writeSnapshots(root, outDir);
+
+  // tell the studio that there is no server behind it
+  const info = { workspace: summary.workspace, exportedAt: new Date().toISOString() };
+  const index = join(outDir, "index.html");
+  const flag = `<script>window.__OMGP_STATIC__ = ${JSON.stringify(info).replace(/</g, "\\u003c")};</script>`;
+  writeFileSync(index, readFileSync(index, "utf8").replace(/<\/head>/i, `  ${flag}\n  </head>`));
+  const { outDir: _, ...counts } = summary;
+  writeFileSync(join(outDir, MARKER), JSON.stringify({ omgp: "static export", ...info, ...counts }, null, 2) + "\n");
+  // GitHub Pages without Actions runs Jekyll, which drops folders starting with _
+  writeFileSync(join(outDir, ".nojekyll"), "");
+  return summary;
+}
+
+/**
+ * Everything of an export except the studio itself: the GET snapshots under api/, the
+ * workspace files under files/ (HTML with the annotate layer) and that layer.
+ */
+export function writeSnapshots(root: string, outDir: string): ExportSummary {
+  root = resolve(root);
+  outDir = resolve(outDir);
   const write = (rel: string, data: unknown) => {
     const path = join(outDir, rel);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, typeof data === "string" ? data : JSON.stringify(data));
   };
-
-  // the studio, told that there is no server behind it
-  cpSync(web, outDir, { recursive: true });
   const ws = loadWorkspace(root);
-  const info = { workspace: ws.config.name, exportedAt: new Date().toISOString() };
-  const index = readFileSync(join(outDir, "index.html"), "utf8");
-  const flag = `<script>window.__OMGP_STATIC__ = ${JSON.stringify(info).replace(/</g, "\\u003c")};</script>`;
-  write("index.html", index.replace(/<\/head>/i, `  ${flag}\n  </head>`));
 
   // GET endpoints, at api/<path>.json (see snapshotPath in web/src/lib/static.ts)
   write("api/workspace.json", { ...ws, root: basename(root) }); // not the absolute path of the machine that exported
@@ -79,11 +97,7 @@ export function exportStatic(root: string, outDir: string): ExportSummary {
     } else copyFileSync(from, to);
     files++;
   }
-
-  write(MARKER, JSON.stringify({ omgp: "static export", ...info, projects: ws.projects.length, sessions, files }, null, 2) + "\n");
-  // GitHub Pages without Actions runs Jekyll, which drops folders starting with _
-  write(".nojekyll", "");
-  return { outDir, projects: ws.projects.length, sessions, files };
+  return { outDir, workspace: ws.config.name, projects: ws.projects.length, sessions, files };
 }
 
 /** is `path` the same as `dir` or inside it */
@@ -92,16 +106,13 @@ function inside(path: string, dir: string) {
   return r === "" || (!r.startsWith("..") && !r.startsWith(sep) && !/^[a-zA-Z]:/.test(r));
 }
 
-/** An empty folder, or one a previous export wrote. Anything else stays untouched. */
-function prepare(outDir: string) {
-  if (existsSync(outDir)) {
-    if (!statSync(outDir).isDirectory()) throw new Error(`${outDir} is a file`);
-    const entries = readdirSync(outDir).filter((f) => f !== ".DS_Store");
-    if (entries.length && !entries.includes(MARKER))
-      throw new Error(`${outDir} is not empty and not an earlier export (no ${MARKER}); choose an empty folder`);
-    rmSync(outDir, { recursive: true, force: true });
-  }
-  mkdirSync(outDir, { recursive: true });
+/** Exports go into an empty folder, or replace an earlier export. Anything else stays untouched. */
+function checkTarget(outDir: string) {
+  if (!existsSync(outDir)) return;
+  if (!statSync(outDir).isDirectory()) throw new Error(`${outDir} is a file`);
+  const entries = readdirSync(outDir).filter((f) => f !== ".DS_Store");
+  if (entries.length && !entries.includes(MARKER))
+    throw new Error(`${outDir} is not empty and not an earlier export (no ${MARKER}); choose an empty folder`);
 }
 
 /** Workspace files relative to root, without dot folders (.omgp, .git), node_modules and the export itself. */

@@ -89,7 +89,7 @@
   </span>
 {:else}
   <span class="view" class:empty={!value} class:disabled role="button" tabindex={disabled ? -1 : 0} onclick={start} onkeydown={(e) => e.key === "Enter" && start(e)}>
-    {#if children && value}{@render children()}{:else}{value || placeholder}{/if}<span class="pen" aria-hidden="true">✎</span>
+    {#if children && value}{@render children()}{:else}{value || (disabled ? "" : placeholder)}{/if}<span class="pen" aria-hidden="true">✎</span>
   </span>
 {/if}
 

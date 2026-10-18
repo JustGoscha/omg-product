@@ -250,6 +250,7 @@ const en = {
     readOnly: "Demo: read-only",
     needsAgent: "Demo: read-only. With omgp serve and an agent, the agent builds your option while the room waits.",
     handoff: "Demo: read-only. omgp serve writes handoff.md from these results.",
+    noDate: "No date yet",
   },
 };
 
@@ -505,6 +506,7 @@ const de: Labels = {
     readOnly: "Demo: nur lesen",
     needsAgent: "Demo: nur lesen. Mit omgp serve und einem Agenten baut der Agent deine Option, während der Raum wartet.",
     handoff: "Demo: nur lesen. omgp serve schreibt handoff.md aus diesen Ergebnissen.",
+    noDate: "Noch kein Termin",
   },
 };
 
