@@ -164,6 +164,7 @@
       <section class="done">
         <h1>{t.pulse.doneTitle}</h1>
         <p class="muted">{t.pulse.doneBody}</p>
+        <p class="muted small">{t.pulse.inPulse(ids.length, (ws?.projects.length ?? 0) - ids.length)}</p>
         {#if history.length}<button class="btn small ghost" onclick={undo}>↶ {t.pulse.undo}</button>{/if}
       </section>
       {@render ranking(5)}
@@ -211,7 +212,7 @@
         {/each}
       </div>
       <div class="foot">
-        <span class="muted">{t.pulse.left(cards.length - pos)}</span>
+        <span class="muted">{t.pulse.left(cards.length - pos)} · {t.pulse.inPulse(ids.length, (ws?.projects.length ?? 0) - ids.length)}</span>
         {#if history.length}<button class="btn small ghost" onclick={undo}>↶ {t.pulse.undo}</button>{/if}
       </div>
     {/if}
@@ -531,6 +532,9 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+  }
+  .small {
+    font-size: 0.85rem;
   }
   .done {
     text-align: center;

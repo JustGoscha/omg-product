@@ -121,12 +121,13 @@ function spread(xs: number[]) {
 
 /**
  * Today's cards for one person: projects they rated least come first, then those
- * everybody rated least, then a shuffle that stays the same all day.
+ * everybody rated least, then a shuffle that stays the same all day. Projects a person
+ * never rated are always in the deck, so the first deck has everything and a new
+ * project shows up the next time; `daily` limits the deck after that.
  */
 export function deck(days: PulseDay[], ids: string[], voter: string, today: string, daily = DAILY): { cards: string[]; done: string[] } {
   const me = voterSlug(voter);
   const done = Object.keys(days.find((d) => d.date === today && voterSlug(d.voter) === me)?.votes ?? {}).filter((id) => ids.includes(id));
-  const left = Math.max(0, Math.min(daily, ids.length) - done.length);
   const mineCount = new Map<string, number>();
   const allCount = new Map<string, number>();
   for (const d of days)
@@ -134,6 +135,8 @@ export function deck(days: PulseDay[], ids: string[], voter: string, today: stri
       allCount.set(id, (allCount.get(id) ?? 0) + 1);
       if (voterSlug(d.voter) === me) mineCount.set(id, (mineCount.get(id) ?? 0) + 1);
     }
+  const never = ids.filter((id) => !mineCount.has(id)).length;
+  const left = Math.max(0, Math.min(daily, ids.length) - done.length, never);
   const cards = ids
     .filter((id) => !done.includes(id))
     .map((id) => ({ id, mine: mineCount.get(id) ?? 0, all: allCount.get(id) ?? 0, shuffle: hash(`${today}:${me}:${id}`) }))

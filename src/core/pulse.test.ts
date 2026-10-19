@@ -46,11 +46,15 @@ describe("pulse", () => {
     expect(rank(days, ids, { today: "2026-10-19", voter: "anna" })[0].id).toBe("a");
   });
 
-  test("the daily deck: the least rated first, done when the day is full", () => {
-    const days = [day("Anna", "2026-10-18", { a: "top", b: "high" })];
-    expect(deck(days, ids, "Anna", "2026-10-19", 2).cards).toEqual(expect.arrayContaining(["c", "d"]));
+  test("the daily deck: everything never rated first, then the least rated, done when the day is full", () => {
+    // the first deck has every project, however small the daily limit
+    expect(deck([], ids, "Anna", "2026-10-18", 2).cards).toHaveLength(4);
+    const days = [day("Anna", "2026-10-18", { a: "top", b: "high", c: "low", d: "drop" })];
+    expect(deck(days, ids, "Anna", "2026-10-19", 2).cards).toHaveLength(2);
     const after = addVote(addVote(days, "Anna", "2026-10-19", "c", "low"), "Anna", "2026-10-19", "d", "top");
     expect(deck(after, ids, "anna", "2026-10-19", 2)).toEqual({ cards: [], done: ["c", "d"] });
+    // a new project comes up even when the day is full
+    expect(deck(after, [...ids, "e"], "anna", "2026-10-19", 2).cards).toEqual(["e"]);
     // the same deck all day
     expect(deck(days, ids, "Ben", "2026-10-19", 3)).toEqual(deck(days, ids, "Ben", "2026-10-19", 3));
   });
