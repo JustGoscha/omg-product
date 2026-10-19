@@ -209,6 +209,8 @@
         : order === "pulse"
           ? pulsePos(a) - pulsePos(b) || byStart(a, b)
           : byStart(a, b);
+  // the stage board: most popular in the Pulse first once people voted, the rest in the chosen order
+  const boardOrder = (a: ProjectInfo, b: ProjectInfo) => (pulse.positions.size ? pulsePos(a) - pulsePos(b) : 0) || ordered(a, b);
   // which projects of a group come first when not all fit: a meeting soon, a conflict, running now, priority
   const relevance = (p: ProjectInfo) => {
     const soon = addDays(today, 21), sp = spanOf(p);
@@ -634,7 +636,7 @@
         <button class="btn small" onclick={() => (filterCount ? (only = noFilter()) : (focus = "all"))}>{filterCount ? t.rm.reset : t.rm.showAll}</button>
       </div>
     {:else if ws && view === "stages"}
-      <StageBoard projects={visible} {today} perColumn={5} {spanOf} order={ordered} pick={order === "pulse" ? ordered : byRelevance} rankOf={(id) => pulse.positions.get(id)?.pos} />
+      <StageBoard projects={visible} {today} perColumn={5} {spanOf} order={boardOrder} pick={pulse.positions.size ? boardOrder : byRelevance} rankOf={(id) => pulse.positions.get(id)?.pos} />
     {:else if ws}
       <div class="axis" style="--lw:{LABEL_W}px">
         <div class="axis-time" style="width:{width}px">
