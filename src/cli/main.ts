@@ -15,7 +15,7 @@ import { checkPrototype, formatCheck, prototypeTargets } from "../core/proto-che
 import * as tpl from "./templates.ts";
 import { exportStatic } from "./export.ts";
 import { loadPulse, pulseProjects } from "../core/pulse-files.ts";
-import { localDate, rank } from "../core/pulse.ts";
+import { localDate, nextTasks, rank } from "../core/pulse.ts";
 
 const HELP = `omgp — product harness: roadmap, prototypes and decision sessions as files
 
@@ -31,6 +31,7 @@ const HELP = `omgp — product harness: roadmap, prototypes and decision session
                                        --shots saves a PNG per state to .omgp/shots to look at (exit 1 on problems)
   omgp roadmap [--json]                conflicts, bottlenecks, overload, delegatable work
   omgp pulse [--voter name] [--json]   what people swiped as most important (Elo, studio: #/pulse)
+  omgp next [--json]                   what to do now: the first open task of the most important projects
   omgp status [project]                project and session progress
   omgp new project <id> --name "…" [--initiative id] [--stage idea]
   omgp new session <project> <id> [--title "…"] [--kind kickoff]
@@ -229,6 +230,7 @@ async function main() {
 
   if (cmd === "roadmap") return printRoadmap(ws, !!flags.json);
   if (cmd === "pulse") return printPulse(root, ws, str(flags.voter), !!flags.json);
+  if (cmd === "next") return printNext(root, ws, !!flags.json);
   if (cmd === "status") return printStatus(ws, pos[1]);
 
   if (cmd === "new") {
@@ -411,6 +413,21 @@ function printRoadmap(ws: Workspace, asJson: boolean) {
   section("Overloaded streams", a.overload.map((o) => `${o.stream} ${o.from}…${o.to}: load ${o.peak} > capacity ${o.capacity} (${o.projects.map(name).join(", ")})`));
   section("High priority, not scheduled", a.unscheduled.map(name));
   section("Can be handed to one person (no hard/tight links)", a.delegatable.map(name));
+}
+
+function printNext(root: string, ws: Workspace, asJson: boolean) {
+  // only from the focus: the top profile.focus projects (default 3) that were in a duel
+  const ranking = rank(loadPulse(root), pulseProjects(ws), { today: localDate(), k: ws.config.pulse?.k })
+    .filter((r) => r.wins + r.losses > 0)
+    .slice(0, ws.config.profile?.focus ?? 3)
+    .map((r) => r.id);
+  const tasks = nextTasks(ranking, ws.projects, 3);
+  if (asJson) return console.log(JSON.stringify(tasks.map((x) => ({ ...x, project: ws.projects.find((p) => p.id === x.id)?.name })), null, 2));
+  if (!tasks.length) return console.log("No next tasks yet. Finish a Pulse round: it asks the top 3 projects for theirs.");
+  tasks.forEach((x, i) => {
+    const name = ws.projects.find((p) => p.id === x.id)?.name ?? x.id;
+    console.log(i === 0 ? `${c.bold("Do next:")} ${x.task}  ${c.dim(`— ${name}, #${x.place} in the Pulse`)}` : c.dim(`   then:  ${x.task}  — ${name}, #${x.place}`));
+  });
 }
 
 function printPulse(root: string, ws: Workspace, voter: string | undefined, asJson: boolean) {

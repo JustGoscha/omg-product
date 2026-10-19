@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addDuel, elo, inPulse, mayDuel, nextPair, rank, START, type Duel, type PulseDay } from "./pulse.ts";
+import { addDuel, elo, inPulse, mayDuel, nextPair, nextTasks, rank, START, type Duel, type PulseDay } from "./pulse.ts";
 import { loadPulse, savePulseDuel } from "./pulse-files.ts";
 
 const ids = ["a", "b", "c", "d"];
@@ -106,6 +106,15 @@ describe("pulse", () => {
     expect(inPulse({ stage: "building", snoozed: "2026-11-01" }, undefined, "2026-10-19")).toBe(false);
     expect(inPulse({ stage: "building", snoozed: "2026-11-01" }, undefined, "2026-11-01")).toBe(true);
     expect(inPulse({ stage: "dropped" }, "never", "2026-10-19")).toBe(false);
+  });
+
+  test("what to do next: the first task of the most important projects", () => {
+    const projects = [{ id: "a" }, { id: "b", next: ["ship b", "post b"] }, { id: "c", next: ["fix c"] }];
+    expect(nextTasks(["a", "b", "c"], projects)).toEqual([
+      { id: "b", task: "ship b", place: 2 },
+      { id: "c", task: "fix c", place: 3 },
+    ]);
+    expect(nextTasks(["c", "b"], projects, 1)).toEqual([{ id: "c", task: "fix c", place: 1 }]);
   });
 
   test("keep going is on unless the workspace turns it off", () => {

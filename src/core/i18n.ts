@@ -195,6 +195,8 @@ const en = {
   findings: "Findings",
   reach: { unreleased: "Not out yet", ready: "Market-ready", released: "Released", launched: "Launched", marketing: "Marketing", customers: "Has customers", improving: "Improving" } as Record<string, string>,
   nextMove: "Next",
+  todo: { done: "Done: tick it off", title: "Do next" },
+  focus: { line: (n: number) => `Focus: the top ${n}. Everything below waits.` },
   shelf: {
     title: "In the pulse?",
     hint: "Shelve: back in a month. Kill it: irrelevant, never comes back",
@@ -530,6 +532,8 @@ const de: Labels = {
   findings: "Befunde",
   reach: { unreleased: "Noch nicht draußen", ready: "Marktreif", released: "Veröffentlicht", launched: "Gelauncht", marketing: "Marketing", customers: "Hat Kunden", improving: "Wird verbessert" },
   nextMove: "Als Nächstes",
+  todo: { done: "Erledigt: abhaken", title: "Als Nächstes tun" },
+  focus: { line: (n: number) => `Fokus: die ersten ${n}. Alles darunter wartet.` },
   shelf: {
     title: "Im Puls?",
     hint: "Ins Regal: in einem Monat zurück. Beerdigen: irrelevant, kommt nie wieder",

@@ -230,3 +230,17 @@ export function addDuel(days: PulseDay[], voter: string, date: string, duel: Due
   const rest = days.filter((_, j) => j !== i);
   return day.duels.length ? [...rest, day] : rest;
 }
+
+/**
+ * What to do next: the first open task of the most important projects, in ranking order.
+ * Projects without next tasks are skipped (the Pulse asks the top 3 for theirs).
+ */
+export function nextTasks(ranking: string[], projects: { id: string; next?: string[] }[], n = 3): { id: string; task: string; place: number }[] {
+  const byId = new Map(projects.map((p) => [p.id, p]));
+  const out: { id: string; task: string; place: number }[] = [];
+  ranking.forEach((id, i) => {
+    const task = byId.get(id)?.next?.[0];
+    if (task && out.length < n) out.push({ id, task, place: i + 1 });
+  });
+  return out;
+}

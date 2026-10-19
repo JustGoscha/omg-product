@@ -56,6 +56,7 @@ building → rollout → measuring → done (or paused, dropped).
 
 | Stage / situation | Skill | Main output |
 |---|---|---|
+| "what should I do next?", "what now?" | — | run `omgp next`: the first open task of the most important project (Pulse ranking). Answer with that task; say if the top projects have no tasks yet |
 | new workspace, "overview of all my projects", no reach/next yet | `omgp-onboard` | profile, vision, every project's stage, reach, next |
 | idea, exploring: "we should build X" | `omgp-explore` | Problem, For whom, Metric, open decisions |
 | prototyping: something to look at is needed | `omgp-prototype` | `prototypes/*.html` |

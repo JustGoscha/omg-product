@@ -129,6 +129,8 @@
   const ranked = $derived(days && ws ? rank(days, ids, { today, voter: who === "me" ? voter : undefined, k: cfg.k }) : []);
   const people = $derived(new Set((days ?? []).map((d) => d.voter.toLowerCase())).size);
   const anyDuels = $derived(ranked.some((r) => r.wins + r.losses > 0));
+  // focus: the top this many are what we work on; everything below waits
+  const focusN = $derived(ws?.config.profile?.focus ?? 3);
   // a duel on screen: on a phone it fills exactly one screen, no scrolling
   const duelling = $derived(!results && !!pair && !roundOver && !stopped && !!store.author);
 
@@ -314,7 +316,8 @@
     <ol class="rank">
       {#each ranked.slice(0, max) as r, i (r.id)}
         {@const p = store.project(r.id)}
-        <li class:quiet={!(r.wins + r.losses)}>
+        {#if i === focusN && max > focusN}<li class="focusline">🎯 {t.focus.line(focusN)}</li>{/if}
+        <li class:quiet={!(r.wins + r.losses)} class:waits={i >= focusN} class:infocus={i < focusN}>
           <span class="n">{i + 1}</span>
           <div class="who-row">
             <a href={href(`/p/${r.id}`)}>{p?.name ?? r.id}</a>
@@ -641,6 +644,28 @@
   }
   .rank li.quiet {
     opacity: 0.55;
+  }
+  .rank li.infocus {
+    box-shadow: 0 0 0 1.5px var(--should-soft), 0 8px 20px -14px rgba(47, 138, 91, 0.5);
+  }
+  .rank li.waits {
+    opacity: 0.4;
+    filter: grayscale(1);
+  }
+  .rank li.waits:hover {
+    opacity: 0.85;
+    filter: none;
+  }
+  .rank li.focusline {
+    display: block;
+    background: none;
+    box-shadow: none;
+    padding: 0.5rem 0.2rem 0.2rem;
+    font-size: 0.8rem;
+    font-weight: 750;
+    color: var(--should);
+    border-top: 2px dashed var(--should-soft);
+    border-radius: 0;
   }
   .n {
     font-family: var(--font-display);

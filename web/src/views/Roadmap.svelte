@@ -54,6 +54,11 @@
   let laneMode = $state<LaneMode>(read("omgp:lanes", "initiative") as LaneMode);
   let collapsed = $state<Set<string>>(new Set(JSON.parse(read("omgp:collapsed", "[]"))));
   let view = $state<View>(read("omgp:view", "stages") === "time" ? "time" : "stages");
+  // personal workspaces stay light: no timeline, no dates; what matters now and what to do next
+  const light = $derived(ws?.config.profile?.kind === "personal");
+  $effect(() => {
+    if (light) view = "stages";
+  });
   let order = $state<Order>((["stage", "start", "priority", "pulse"].includes(read("omgp:order", "")) ? read("omgp:order", "") : "stage") as Order);
   pulse.start();
   const pulsePos = (p: ProjectInfo) => pulse.positions.get(p.id)?.pos ?? 9999;
@@ -538,11 +543,13 @@
       <strong>{ws?.config.name ?? "…"}</strong>
       <span class="muted">{t.roadmap}</span>
     </div>
-    <div class="seg" role="group" aria-label="view">
-      {#each ["stages", "time"] as const as v}
-        <button class:on={view === v} onclick={() => (view = v)}>{t.rm.view[v]}</button>
-      {/each}
-    </div>
+    {#if !light}
+      <div class="seg" role="group" aria-label="view">
+        {#each ["stages", "time"] as const as v}
+          <button class:on={view === v} onclick={() => (view = v)}>{t.rm.view[v]}</button>
+        {/each}
+      </div>
+    {/if}
     <div class="seg" role="group" aria-label={t.rm.filter}>
       {#each ["now", "planned", "all"] as const as f}
         <button class:on={focus === f} title={t.rm.focusHint[f]} onclick={() => ((focus = f), (expanded = new Set()), (allGroups = false))}>{t.rm.focus[f]} <small class="cnt">{countFor(f)}</small></button>
@@ -636,7 +643,7 @@
         <button class="btn small" onclick={() => (filterCount ? (only = noFilter()) : (focus = "all"))}>{filterCount ? t.rm.reset : t.rm.showAll}</button>
       </div>
     {:else if ws && view === "stages"}
-      <StageBoard projects={visible} {today} perColumn={5} {spanOf} order={boardOrder} pick={pulse.positions.size ? boardOrder : byRelevance} rankOf={(id) => pulse.positions.get(id)?.pos} />
+      <StageBoard projects={visible} {today} perColumn={5} {spanOf} order={boardOrder} pick={pulse.positions.size ? boardOrder : byRelevance} rankOf={(id) => pulse.positions.get(id)?.pos} focus={pulse.positions.size ? (ws?.config.profile?.focus ?? 3) : 0} dates={!light} />
     {:else if ws}
       <div class="axis" style="--lw:{LABEL_W}px">
         <div class="axis-time" style="width:{width}px">
@@ -841,7 +848,7 @@
               <button class="finding" onclick={() => reveal(b.project)}><strong>{name(b.project)}</strong> <span class="muted">← {b.dependents.map(name).join(", ")}</span></button>
             {/each}
           {/if}
-          {#if a.unscheduled.length}
+          {#if a.unscheduled.length && !light}
             <h3>High priority, no date</h3>
             {#each a.unscheduled as id}<button class="finding" onclick={() => reveal(id)}>{name(id)}</button>{/each}
           {/if}
