@@ -71,10 +71,10 @@ export const api = {
     const d = await call<{ days: PulseDay[] }>("/api/pulse");
     return isStatic ? { days: localPulse<PulseDay[]>() ?? d.days } : d;
   },
-  pulseDuel: async (v: { voter: string; date: string; win: string; over: string; undo?: boolean }) => {
+  pulseDuel: async (v: { voter: string; date: string; win: string; over: string; neither?: boolean; undo?: boolean }) => {
     if (!isStatic) return call<{ days: PulseDay[] }>("/api/pulse", { method: "POST", body: JSON.stringify(v) });
     const base = localPulse<PulseDay[]>() ?? (await call<{ days: PulseDay[] }>("/api/pulse")).days;
-    const days = addDuel(base, v.voter, v.date, { win: v.win, over: v.over }, v.undo);
+    const days = addDuel(base, v.voter, v.date, { win: v.win, over: v.over, neither: v.neither }, v.undo);
     saveLocalPulse(days);
     return { days };
   },

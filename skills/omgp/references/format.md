@@ -476,9 +476,11 @@ date: 2026-10-19
 duels:
   - { win: offline-sync, over: csv-import }
   - { win: customer-portal, over: offline-sync }
+  - { neither: [csv-import, job-templates] }   # neither matters right now
 ```
 
-Every duel is an Elo match, applied in date order, so recent days weigh more. Opponents are
+Every duel is an Elo match, applied in date order (`neither`: both lose to an average project, so
+both drop, the higher-rated one more), so recent days weigh more. Opponents are
 random, so a project from the bottom meets the top and jumps when it wins. Dropped projects
 are left out; done ones too, once they are as far out as `profile.doneMeans`.
 

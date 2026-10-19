@@ -34,9 +34,15 @@ export function inPulse(p: { stage?: string; reach?: string }, doneMeans?: strin
   return reachIndex(p.reach) < reachIndex(doneMeans);
 }
 
+/**
+ * One call on two projects: `win` matters more than `over`. With `neither`, neither matters
+ * right now: both lose against an average project (START), so both drop, the higher one more.
+ * In the file: { win, over } or { neither: [a, b] }.
+ */
 export interface Duel {
   win: string;
   over: string;
+  neither?: boolean;
 }
 
 /** One person's duels on one day, in order: pulse/<date>/<voter>.yaml */
@@ -80,9 +86,17 @@ export const isDuel = (d: unknown): d is Duel =>
 /** Elo ratings after every duel of `days`, in date order. An upset moves both by up to k. */
 export function elo(days: PulseDay[], ids: string[], k = K): Map<string, number> {
   const r = new Map(ids.map((id) => [id, START]));
+  const expect = (a: number, b: number) => 1 / (1 + 10 ** ((b - a) / 400));
   for (const day of [...days].sort(byDate))
-    for (const { win, over } of day.duels) {
+    for (const { win, over, neither } of day.duels) {
       if (!r.has(win) || !r.has(over)) continue;
+      if (neither) {
+        // both lose to an average project
+        const [a, b] = [r.get(win)!, r.get(over)!];
+        r.set(win, a - k * expect(a, START));
+        r.set(over, b - k * expect(b, START));
+        continue;
+      }
       const expected = 1 / (1 + 10 ** ((r.get(over)! - r.get(win)!) / 400));
       r.set(win, r.get(win)! + k * (1 - expected));
       r.set(over, r.get(over)! - k * (1 - expected));
@@ -103,7 +117,8 @@ export function rank(days: PulseDay[], ids: string[], opts: { today?: string; vo
   // the latest call of each person on each pair; a pair is contested when people call it both ways
   const calls = new Map<string, Map<string, string>>();
   for (const d of [...mine].sort(byDate))
-    for (const { win, over } of d.duels) {
+    for (const { win, over, neither } of d.duels) {
+      if (neither) continue;
       const key = pairKey(win, over);
       if (!calls.has(key)) calls.set(key, new Map());
       calls.get(key)!.set(voterSlug(d.voter), win);
@@ -122,8 +137,8 @@ export function rank(days: PulseDay[], ids: string[], opts: { today?: string; vo
       let losses = 0;
       for (const d of mine)
         for (const x of d.duels) {
-          if (x.win === id) wins++;
-          if (x.over === id) losses++;
+          if (x.win === id && !x.neither) wins++;
+          if (x.over === id || (x.neither && x.win === id)) losses++;
         }
       return {
         id,
@@ -197,7 +212,7 @@ export function addDuel(days: PulseDay[], voter: string, date: string, duel: Due
     const key = pairKey(duel.win, duel.over);
     const j = day.duels.findLastIndex((d) => pairKey(d.win, d.over) === key);
     if (j >= 0) day.duels.splice(j, 1);
-  } else day.duels.push({ win: duel.win, over: duel.over });
+  } else day.duels.push(duel.neither ? { win: duel.win, over: duel.over, neither: true } : { win: duel.win, over: duel.over });
   const rest = days.filter((_, j) => j !== i);
   return day.duels.length ? [...rest, day] : rest;
 }

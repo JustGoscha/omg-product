@@ -50,12 +50,11 @@
 
   // ---- the round: `pair` stays put while it animates; the next one is drawn after
   let pair = $state<[string, string] | null>(null);
-  let skipped = $state<string[]>([]);
   let inRound = $state(0);
   let started = $state(false);
   let picked = $state<string | null>(null);
-  let history = $state<{ win: string; over: string }[]>([]);
-  const draw = () => (pair = days && voter ? nextPair(days, ids, voter, today, skipped) : null);
+  let history = $state<{ win: string; over: string; neither?: boolean }[]>([]);
+  const draw = () => (pair = days && voter ? nextPair(days, ids, voter, today) : null);
   $effect(() => {
     if (!started && days && ws && voter) {
       started = true;
@@ -74,34 +73,33 @@
   const a = $derived(pair ? store.project(pair[0]) : null);
   const b = $derived(pair ? store.project(pair[1]) : null);
 
-  function choose(win: string) {
+  // win: the one that matters more; null: neither matters right now, both drop
+  function choose(win: string | null) {
     if (!pair || picked) return;
-    const over = pair[0] === win ? pair[1] : pair[0];
-    picked = win;
-    const saved = api.pulseDuel({ voter, date: today, win, over });
+    const neither = win === null;
+    const over = neither ? pair[1] : pair[0] === win ? pair[1] : pair[0];
+    if (neither) win = pair[0];
+    picked = neither ? "neither" : win;
+    const saved = api.pulseDuel({ voter, date: today, win: win!, over, neither });
     setTimeout(async () => {
       try {
         days = (await saved).days;
       } catch (e) {
         error = (e as Error).message;
       }
-      history = [...history, { win, over }];
+      history = [...history, { win: win!, over, neither }];
       inRound++;
       picked = null;
       draw();
     }, 260);
   }
-  function skip() {
-    if (!pair || picked) return;
-    skipped = [...skipped, [...pair].sort().join("|")];
-    draw();
-  }
+  const skip = () => choose(null);
   async function undo() {
     const last = history.at(-1);
     if (!last) return;
     history = history.slice(0, -1);
     inRound = Math.max(0, inRound - 1);
-    days = (await api.pulseDuel({ voter, date: today, ...last, undo: true })).days;
+    days = (await api.pulseDuel({ voter, date: today, win: last.win, over: last.over, undo: true })).days;
     pair = Math.random() < 0.5 ? [last.win, last.over] : [last.over, last.win];
   }
   function more() {
@@ -119,7 +117,7 @@
       if (k !== undefined) {
         e.preventDefault();
         choose(pair[k]);
-      } else if (e.key === "s") skip();
+      } else if (e.key === "n" || e.key === "s") skip();
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
@@ -236,7 +234,7 @@
       <div class="foot">
         {#if history.length}<button class="btn small ghost" onclick={undo}>↶ {t.pulse.undo}</button>{:else}<span></span>{/if}
         <span class="muted small">{t.pulse.pick}{anonymous ? ` · ${t.pulse.anonymous}` : ""}</span>
-        <button class="btn small ghost" onclick={skip} title={t.pulse.skipHint}>{t.pulse.skip} ⤼</button>
+        <button class="btn small ghost" onclick={skip} title={t.pulse.neitherHint}>{t.pulse.neither} ↓</button>
       </div>
       <p class="muted small center">{t.pulse.inPulse(ids.length, ws.projects.length - ids.length)}</p>
     {/if}

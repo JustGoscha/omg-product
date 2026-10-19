@@ -184,17 +184,17 @@ export function serve({ root, port, host, hosted = false, key, data }: ServeOpti
 
         if (path === "/api/workspace") return json(workspace());
 
-        // pulse: GET every day's duels, POST one { voter, date, win, over, undo? }
+        // pulse: GET every day's duels, POST one { voter, date, win, over, neither?, undo? }
         if (path === "/api/pulse") {
           if (req.method === "POST") {
-            const { voter, date, win, over, undo } = (await req.json()) as { voter: string; date: string; win: string; over: string; undo?: boolean };
+            const { voter, date, win, over, undo, neither } = (await req.json()) as { voter: string; date: string; win: string; over: string; undo?: boolean; neither?: boolean };
             const ws = workspace();
             if (!voter?.trim()) return json({ error: "who decides?" }, 400);
             if (![win, over].every((id) => ws.projects.some((p) => p.id === id))) return json({ error: "project not found" }, 404);
             // hosted, the date can't be picked freely: the voter's today is at most a day off ours
             if (hosted && ![-1, 0, 1].some((n) => date === localDate(new Date(Date.now() + n * 864e5)))) return json({ error: "wrong date" }, 400);
             if (!undo && !mayDuel(loadPulse(pulseRoot), voter, date, ws.config.pulse)) return json({ error: "that's all for today" }, 429);
-            savePulseDuel(pulseRoot, voter.trim(), date, { win, over }, !!undo);
+            savePulseDuel(pulseRoot, voter.trim(), date, neither ? { win, over, neither: true } : { win, over }, !!undo);
             if (pulseRoot !== root) send({ type: "change", paths: [`pulse/${date}`] });
           }
           return json({ days: loadPulse(pulseRoot) });

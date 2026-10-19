@@ -29,6 +29,16 @@ describe("pulse", () => {
     expect(jump).toBeGreaterThan(step * 3);
   });
 
+  test("neither: both drop, the higher one more", () => {
+    const base = day("Anna", "2026-10-01", Array.from({ length: 6 }, (): [string, string] => ["a", "b"]));
+    const before = elo([base], ids);
+    const after = elo([base, { voter: "Anna", date: "2026-10-02", duels: [{ win: "a", over: "c", neither: true }] }], ids);
+    expect(after.get("a")!).toBeLessThan(before.get("a")!);
+    expect(after.get("c")!).toBeLessThan(before.get("c")!);
+    expect(before.get("a")! - after.get("a")!).toBeGreaterThan(before.get("c")! - after.get("c")!);
+    expect(after.get("b")).toBe(before.get("b"));
+  });
+
   test("recent days count more than old ones", () => {
     const old = Array.from({ length: 5 }, (_, i) => day("Anna", `2026-09-0${i + 1}`, [["a", "b"]]));
     const now = Array.from({ length: 5 }, (_, i) => day("Anna", `2026-10-0${i + 1}`, [["b", "a"]]));
@@ -93,8 +103,11 @@ describe("pulse", () => {
     savePulseDuel(root, "Anna Ö", "2026-10-19", { win: "a", over: "b" });
     savePulseDuel(root, "Anna Ö", "2026-10-19", { win: "c", over: "a" });
     savePulseDuel(root, "Anna Ö", "2026-10-19", { win: "a", over: "b" }, true);
-    expect(readFileSync(join(root, "pulse/2026-10-19/anna-o.yaml"), "utf8")).toContain("win: c");
-    expect(loadPulse(root)).toEqual([{ voter: "Anna Ö", date: "2026-10-19", duels: [{ win: "c", over: "a" }] }]);
+    savePulseDuel(root, "Anna Ö", "2026-10-19", { win: "b", over: "d", neither: true });
+    const file = readFileSync(join(root, "pulse/2026-10-19/anna-o.yaml"), "utf8");
+    expect(file).toContain("win: c");
+    expect(file).toContain("neither:");
+    expect(loadPulse(root)).toEqual([{ voter: "Anna Ö", date: "2026-10-19", duels: [{ win: "c", over: "a" }, { win: "b", over: "d", neither: true }] }]);
   });
 });
 

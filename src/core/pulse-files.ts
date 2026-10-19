@@ -11,8 +11,14 @@ import type { Workspace } from "./workspace.ts";
 //   duels:
 //     - { win: offline-sync, over: csv-import }
 //     - { win: customer-portal, over: job-templates }
+//     - { neither: [csv-import, job-templates] }    neither matters right now: both drop
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+const fromFile = (d: unknown): unknown => {
+  const n = (d as { neither?: unknown })?.neither;
+  return Array.isArray(n) && n.length === 2 ? { win: String(n[0]), over: String(n[1]), neither: true } : d && { win: (d as Duel).win, over: (d as Duel).over };
+};
 
 export function loadPulse(root: string): PulseDay[] {
   const days: PulseDay[] = [];
@@ -22,7 +28,7 @@ export function loadPulse(root: string): PulseDay[] {
       if (!file.endsWith(".yaml")) continue;
       try {
         const raw = parseYaml(readFileSync(join(root, "pulse", date, file), "utf8")) as { voter?: unknown; duels?: unknown } | null;
-        const duels = (Array.isArray(raw?.duels) ? raw.duels : []).filter(isDuel).map((d) => ({ win: d.win, over: d.over }));
+        const duels = (Array.isArray(raw?.duels) ? raw.duels : []).map(fromFile).filter(isDuel);
         days.push({ voter: String(raw?.voter ?? file.replace(/\.yaml$/, "")), date, duels });
       } catch {
         /* a broken file counts as no duels */
@@ -39,7 +45,7 @@ export function savePulseDuel(root: string, voter: string, date: string, duel: D
   const before = existsSync(path) ? loadPulse(root).filter((d) => d.date === date && voterSlug(d.voter) === voterSlug(voter)) : [];
   const day = addDuel(before, voter, date, duel, undo)[0];
   if (!day) return rmSync(path, { force: true });
-  writeText(path, yamlStringify({ voter: day.voter, date, duels: day.duels }));
+  writeText(path, yamlStringify({ voter: day.voter, date, duels: day.duels.map((d) => (d.neither ? { neither: [d.win, d.over] } : { win: d.win, over: d.over })) }));
 }
 
 /** Projects that are in the pulse (see inPulse). */
