@@ -64,8 +64,9 @@ profile:
                           # it stays in the Pulse; built but not launched is listed on the roadmap
   focus: 3                # at most this many projects in exploring … rollout
   capacity: 10 h/week
-pulse: { daily: 5, more: true, anonymous: false, k: 32 }   # duels per round, keep going after a round,
-                          # votes without names, how far one duel moves a rating
+pulse: { daily: 5, more: true, anonymous: false, kill: true, k: 32 }   # duels per round, keep going
+                          # after a round, votes without names, "Kill it" (drop a project for good; default
+                          # on for personal, off for company workspaces), how far one duel moves a rating
 ```
 
 ## vision.md
@@ -114,6 +115,8 @@ stage: kickoff        # idea | exploring | prototyping | kickoff | scoped | buil
 reach: unreleased     # how far it is out in the world, apart from how far it is built:
                       # unreleased | ready (market-ready) | released (public) | launched (people were told)
                       # | marketing | customers (first users / paying) | improving (improve, scale, synergies)
+snoozed: 2026-11-19   # Pulse: out of the duels until that day, then back by itself
+shelved: true         # Pulse: a zombie, comes up about ten times less often; if it wins it climbs as usual
 next:                 # the next steps, most important first, at most 3 (one string is fine too);
   - Release to the beta accounts   # Pulse cards show them, and the Pulse asks for them whenever
   - Help text for the series dialog  # a project is in the top 3

@@ -347,6 +347,9 @@ export const ProductConfig = z.object({
     .object({
       daily: z.number().int().min(1).optional(),
       more: z.boolean().optional(),
+      // "Kill it": drop a project from the pulse for good. Default: on for personal workspaces,
+      // off for companies (one person shouldn't drop what a team decides)
+      kill: z.boolean().optional(),
       anonymous: z.boolean().optional(),
       k: z.number().positive().optional(),
     })
@@ -391,6 +394,9 @@ export const Project = z.object({
   stage: z.enum(stages).default("idea"),
   priority: z.enum(["urgent", "high", "medium", "low"]).default("medium"),
   reach: z.enum(reaches).optional(),
+  // Pulse: snoozed until a day (out of the pulse till then), or shelved (a zombie: comes up rarely)
+  snoozed: timeValue.optional(),
+  shelved: z.boolean().optional(),
   // the next steps, most important first, at most 3: "Landing page", "Post in r/animation"
   next: z
     .union([text, z.array(z.coerce.string())])

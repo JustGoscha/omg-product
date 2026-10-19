@@ -21,13 +21,15 @@ export type Reach = (typeof reaches)[number];
 export const reachIndex = (r: string | undefined) => Math.max(0, reaches.indexOf((r ?? "unreleased") as Reach));
 
 /**
- * Is a project in the pulse? Dropped ones are not. Done ones only while they are not yet as
+ * Is a project in the pulse? Dropped and snoozed ones are not. Done ones only while they are not yet as
  * far out as `doneMeans`; with `never` (or no doneMeans) done never means out of the pulse,
  * unless nothing says otherwise: without a profile, done is done. Paused ones stay: revive or
  * drop is the question.
  */
-export function inPulse(p: { stage?: string; reach?: string }, doneMeans?: string) {
+export function inPulse(p: { stage?: string; reach?: string; snoozed?: string }, doneMeans?: string, today?: string) {
   if (p.stage === "dropped") return false;
+  // snoozed: out of the pulse until that day, then back by itself
+  if (p.snoozed && p.snoozed > (today ?? localDate())) return false;
   if (p.stage !== "done") return true;
   if (!doneMeans) return false;
   if (doneMeans === "never") return true;
@@ -157,8 +159,15 @@ export function rank(days: PulseDay[], ids: string[], opts: { today?: string; vo
  * is about five times as likely as the bottom, so the order at the top gets settled, and the
  * bottom still comes up now and then to climb back. Never compared projects get a boost.
  * Nobody comes back within `fresh` duels, and no pair is decided twice while there are others.
+ * Shelved projects (zombies) come up about ten times less often; if they win, they climb as usual.
  */
-export function nextPair(days: PulseDay[], ids: string[], voter: string, today: string, skipped: string[] = [], fresh = 10): [string, string] | null {
+export function nextPair(
+  days: PulseDay[],
+  ids: string[],
+  voter: string,
+  today: string,
+  { skipped = [], fresh = 10, shelved = [] }: { skipped?: string[]; fresh?: number; shelved?: string[] } = {},
+): [string, string] | null {
   if (ids.length < 2) return null;
   const me = voterSlug(voter);
   const seen = new Map<string, number>();
@@ -178,7 +187,9 @@ export function nextPair(days: PulseDay[], ids: string[], voter: string, today: 
   // weight by place in everyone's ranking: 2.5 for the top down to 0.5 for the bottom
   const ratings = elo(days, ids);
   const place = new Map([...ids].sort((a, b) => ratings.get(b)! - ratings.get(a)!).map((id, i) => [id, i]));
-  const weight = (id: string) => (0.5 + (2 * (ids.length - 1 - place.get(id)!)) / Math.max(1, ids.length - 1)) * (seen.has(id) ? 1 : 3);
+  const zombies = new Set(shelved);
+  const weight = (id: string) =>
+    (0.5 + (2 * (ids.length - 1 - place.get(id)!)) / Math.max(1, ids.length - 1)) * (seen.has(id) ? 1 : 3) * (zombies.has(id) ? 0.1 : 1);
   // weighted random that stays the same within the day: the largest u^(1/w) wins
   const draw = (from: string[], salt: string) =>
     from.reduce<{ id: string; key: number } | null>((best, id) => {

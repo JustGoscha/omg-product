@@ -54,7 +54,8 @@
   let started = $state(false);
   let picked = $state<string | null>(null);
   let history = $state<{ win: string; over: string; neither?: boolean }[]>([]);
-  const draw = () => (pair = days && voter ? nextPair(days, ids, voter, today) : null);
+  const shelved = $derived(ws?.projects.filter((p) => p.shelved).map((p) => p.id) ?? []);
+  const draw = () => (pair = days && voter ? nextPair(days, ids, voter, today, { shelved }) : null);
   $effect(() => {
     if (!started && days && ws && voter) {
       started = true;
@@ -265,7 +266,7 @@
     onkeydown={(e) => e.key === "Enter" && choose(p.id)}
   >
     <span class="meta">
-      <StatusPicker project={p} small />
+      <StatusPicker project={p} small onshelve={draw} />
       {#each initiativeNames(p) as n}<span class="ini">{n}</span>{/each}
       <kbd>{key}</kbd>
     </span>
@@ -322,6 +323,7 @@
               {t.pulse.record(r.wins, r.losses)}
               {#if p}· {p.priority} {t.pulse.declared}{/if}
               {#if r.split}<b class="split" title={t.pulse.splitHint}>⚡ {t.pulse.split}</b>{/if}
+              {#if p?.shelved}· {t.shelf.zombie}{/if}
             </span>
           </div>
           <span class="elo">{r.rating}</span>
