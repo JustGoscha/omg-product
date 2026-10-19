@@ -261,8 +261,8 @@
     class:lose={!!picked && picked !== p.id}
     role="button"
     tabindex="0"
-    onclick={() => choose(p.id)}
-    onkeydown={(e) => e.key === "Enter" && choose(p.id)}
+    onclick={(e) => !(e.target as HTMLElement).closest(".meta") && choose(p.id)}
+    onkeydown={(e) => e.key === "Enter" && !(e.target as HTMLElement).closest(".meta") && choose(p.id)}
   >
     <span class="meta">
       <StatusPicker project={p} small onshelve={draw} />

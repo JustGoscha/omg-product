@@ -87,9 +87,7 @@
 
   $effect(() => {
     if (!open) return;
-    const close = (e: Event) => {
-      if (!menu?.contains(e.target as Node) && !chip?.contains(e.target as Node)) open = false;
-    };
+
     const key = (e: KeyboardEvent) => {
       const items = menu?.querySelectorAll<HTMLButtonElement>("button.opt");
       if (!items?.length) return;
@@ -104,12 +102,10 @@
       e.stopPropagation();
     };
     const reflow = () => place();
-    addEventListener("pointerdown", close, true);
     addEventListener("keydown", key, true);
     addEventListener("resize", reflow);
     addEventListener("scroll", reflow, true);
     return () => {
-      removeEventListener("pointerdown", close, true);
       removeEventListener("keydown", key, true);
       removeEventListener("resize", reflow);
       removeEventListener("scroll", reflow, true);
@@ -143,7 +139,14 @@
 </button>
 
 {#if open}
-  <div class="scrim" use:portal onpointerdown={() => (open = false)} role="presentation"></div>
+  <!-- closes on click, and swallows it: the tap that closes the menu must not reach the card below -->
+  <div
+    class="scrim"
+    use:portal
+    onpointerdown={(e) => (e.preventDefault(), e.stopPropagation())}
+    onclick={(e) => (e.preventDefault(), e.stopPropagation(), (open = false))}
+    role="presentation"
+  ></div>
   <div bind:this={menu} use:portal class="menu" class:up={pos.up} style="top:{pos.top}px;left:{pos.left}px;--max:{pos.max}px" role="menu">
     {#if heading}<div class="heading">{heading}</div>{/if}
     {#each options as o, i (o.value)}
