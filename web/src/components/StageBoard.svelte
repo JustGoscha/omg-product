@@ -15,6 +15,7 @@
     spanOf,
     order,
     pick,
+    rankOf,
   }: {
     projects: ProjectInfo[];
     today: string;
@@ -22,6 +23,7 @@
     spanOf: (p: ProjectInfo) => Span | null;
     order: (a: ProjectInfo, b: ProjectInfo) => number; // how cards are listed
     pick: (a: ProjectInfo, b: ProjectInfo) => number; // which cards make the cut when not all fit
+    rankOf?: (id: string) => number | undefined; // place in the Pulse ranking
   } = $props();
   const t = $derived(store.t);
   const ws = $derived(store.ws);
@@ -90,6 +92,7 @@
                 <span class="top">
                   <span class="stage" style="--s:{stageColor(p.stage)};--sb:{stageSoft(p.stage)}">{t.rm.stages[p.stage] ?? p.stage}</span>
                   {#if p.priority === "urgent"}<span class="prio" title={p.priority}>!!</span>{/if}
+                  {#if rankOf?.(p.id)}<span class="rank" title={t.pulse.title}>#{rankOf(p.id)}</span>{/if}
                 </span>
                 <span class="name">{p.name}</span>
                 {#if n}<span class="next {n.tone ?? ''}">{n.text}</span>{/if}
@@ -112,6 +115,13 @@
 {/if}
 
 <style>
+  .rank {
+    margin-left: auto;
+    font-family: var(--font-code);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--should);
+  }
   .board {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
