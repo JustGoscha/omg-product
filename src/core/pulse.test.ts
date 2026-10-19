@@ -85,6 +85,23 @@ describe("pulse", () => {
     expect(new Set(shown).size).toBe(20);
   });
 
+  test("the top comes up more often than the bottom, the bottom still comes up", () => {
+    const many = Array.from({ length: 20 }, (_, i) => `p${i}`);
+    // p0 beat everyone, p19 lost to everyone
+    const ladder: [string, string][] = [];
+    for (let i = 0; i < 20; i++) for (let j = i + 1; j < 20; j++) ladder.push([many[i], many[j]]);
+    const past = [day("Ben", "2026-10-01", ladder)];
+    const count = new Map<string, number>();
+    for (let v = 0; v < 300; v++) {
+      const p = nextPair([...past, day(`v${v}`, "2026-10-01", [["p1", "p2"]])], many, `v${v}`, "2026-10-19")!;
+      for (const id of p) count.set(id, (count.get(id) ?? 0) + 1);
+    }
+    const top = (count.get("p0") ?? 0) + (count.get("p3") ?? 0);
+    const bottom = (count.get("p19") ?? 0) + (count.get("p18") ?? 0);
+    expect(top).toBeGreaterThan(bottom * 2);
+    expect(bottom).toBeGreaterThan(0);
+  });
+
   test("keep going is on unless the workspace turns it off", () => {
     const days = [day("Anna", "2026-10-19", [["a", "b"], ["c", "d"]])];
     expect(mayDuel(days, "Anna", "2026-10-19", { daily: 2 })).toBe(true);

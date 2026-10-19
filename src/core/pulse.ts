@@ -153,10 +153,10 @@ export function rank(days: PulseDay[], ids: string[], opts: { today?: string; vo
 }
 
 /**
- * The next duel for one person: a project from the least compared third (never compared
- * before anything else) against a random one. Nobody comes back within `fresh` duels, so a
- * round is a mix and not the same few projects catching up, and no pair is decided twice
- * while there are others. Random opponents, not close ones: the bottom meets the top now and then.
+ * The next duel for one person. Both projects are drawn at random, weighted by rank: the top
+ * is about five times as likely as the bottom, so the order at the top gets settled, and the
+ * bottom still comes up now and then to climb back. Never compared projects get a boost.
+ * Nobody comes back within `fresh` duels, and no pair is decided twice while there are others.
  */
 export function nextPair(days: PulseDay[], ids: string[], voter: string, today: string, skipped: string[] = [], fresh = 10): [string, string] | null {
   if (ids.length < 2) return null;
@@ -175,19 +175,25 @@ export function nextPair(days: PulseDay[], ids: string[], voter: string, today: 
   }
   const n = todays.length / 2 + skipped.length;
   const recent = new Set([...todays.slice(-2 * Math.min(fresh, Math.floor((ids.length - 2) / 2))), ...skipped.slice(-fresh).flatMap((k) => k.split("|"))]);
-  const roll = (id: string) => hash(`${today}:${me}:${n}:${id}`);
+  // weight by place in everyone's ranking: 2.5 for the top down to 0.5 for the bottom
+  const ratings = elo(days, ids);
+  const place = new Map([...ids].sort((a, b) => ratings.get(b)! - ratings.get(a)!).map((id, i) => [id, i]));
+  const weight = (id: string) => (0.5 + (2 * (ids.length - 1 - place.get(id)!)) / Math.max(1, ids.length - 1)) * (seen.has(id) ? 1 : 3);
+  // weighted random that stays the same within the day: the largest u^(1/w) wins
+  const draw = (from: string[], salt: string) =>
+    from.reduce<{ id: string; key: number } | null>((best, id) => {
+      const key = ((hash(`${today}:${me}:${n}:${salt}:${id}`) + 0.5) / 2 ** 32) ** (1 / weight(id));
+      return !best || key > best.key ? { id, key } : best;
+    }, null)?.id;
   const open = (a: string) => ids.filter((b) => b !== a && !decided.has(pairKey(a, b)));
   const firsts = ids.filter((a) => open(a).length);
   if (!firsts.length) return null;
   const rested = firsts.filter((a) => !recent.has(a));
-  const pool = (rested.length ? rested : firsts).sort((a, b) => (seen.get(a) ?? 0) - (seen.get(b) ?? 0) || roll(a) - roll(b));
-  // the least compared third, at least a handful, so coverage stays fair without clustering
-  const least = pool.slice(0, Math.max(5, Math.ceil(pool.length / 3)));
-  const first = least.sort((a, b) => roll(a) - roll(b))[0];
+  const first = draw(rested.length ? rested : firsts, "a")!;
   const opponents = open(first);
-  const second = (opponents.some((b) => !recent.has(b)) ? opponents.filter((b) => !recent.has(b)) : opponents).sort((a, b) => roll(a) - roll(b))[0];
+  const second = draw(opponents.some((b) => !recent.has(b)) ? opponents.filter((b) => !recent.has(b)) : opponents, "b")!;
   // which one is shown first is random too, so the first card has no advantage
-  return roll(first + second) % 2 ? [first, second] : [second, first];
+  return hash(`${today}:${me}:${n}:${first}${second}`) % 2 ? [first, second] : [second, first];
 }
 
 /** How many duels this person decided today. */
