@@ -129,6 +129,8 @@
   const ranked = $derived(days && ws ? rank(days, ids, { today, voter: who === "me" ? voter : undefined, k: cfg.k }) : []);
   const people = $derived(new Set((days ?? []).map((d) => d.voter.toLowerCase())).size);
   const anyDuels = $derived(ranked.some((r) => r.wins + r.losses > 0));
+  // a duel on screen: on a phone it fills exactly one screen, no scrolling
+  const duelling = $derived(!results && !!pair && !roundOver && !stopped && !!store.author);
 
   // the top 3 always get asked for their 3 most important next steps; saved into project.md
   const TOP = 3;
@@ -159,9 +161,9 @@
   }
 </script>
 
-<div class="pulse">
+<div class="pulse" class:duelling>
   <header class="bar">
-    <a class="back" href={href("/")}>← {t.roadmap}</a>
+    <a class="back" href={href("/")} aria-label={t.roadmap}>←<span class="wide">{t.roadmap}</span></a>
     <strong class="title">{ws?.config.name ?? "…"} · {t.pulse.title}</strong>
     <div class="seg" role="group">
       <button class:on={!results} onclick={() => router.go("/pulse")}>{t.pulse.swipe}</button>
@@ -233,10 +235,10 @@
       {/key}
       <div class="foot">
         {#if history.length}<button class="btn small ghost" onclick={undo}>↶ {t.pulse.undo}</button>{:else}<span></span>{/if}
-        <span class="muted small">{t.pulse.pick}{anonymous ? ` · ${t.pulse.anonymous}` : ""}</span>
+        <span class="muted small tap">{t.pulse.pick}{anonymous ? ` · ${t.pulse.anonymous}` : ""}</span>
         <button class="btn small ghost" onclick={skip} title={t.pulse.neitherHint}>{t.pulse.neither} ↓</button>
       </div>
-      <p class="muted small center">{t.pulse.inPulse(ids.length, ws.projects.length - ids.length)}</p>
+      <p class="muted small center wide">{t.pulse.inPulse(ids.length, ws.projects.length - ids.length)}</p>
     {/if}
   {:else}
     <section class="head">
@@ -350,6 +352,8 @@
     padding: 0.8rem 0;
   }
   .back {
+    display: inline-flex;
+    gap: 0.3rem;
     color: var(--ink-3);
     text-decoration: none;
     font-weight: 650;
@@ -679,21 +683,127 @@
   .delta.dn {
     color: #b3261e;
   }
+  /* phone: the duel is one screen; header one row, two equal cards, actions at the thumb */
   @media (max-width: 680px) {
-    .duel {
-      grid-template-columns: 1fr;
+    .pulse {
+      gap: 0.6rem;
+      padding: 0 0.75rem;
+    }
+    .pulse.duelling {
+      height: 100dvh;
+      overflow: hidden;
+    }
+    /* only the cards give way; header, question, actions and card text keep their size */
+    .pulse.duelling > :not(.duel) {
+      flex-shrink: 0;
+    }
+    .card > * {
+      flex-shrink: 0;
+    }
+    .bar {
+      flex-wrap: nowrap;
       gap: 0.5rem;
+      padding: 0.6rem 0 0.2rem;
+    }
+    .wide,
+    .ini,
+    kbd,
+    .tap {
+      display: none;
+    }
+    .back {
+      font-size: 1.3rem;
+      padding: 0 0.3rem;
+    }
+    .title {
+      min-width: 0;
+      font-size: 0.95rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .seg button {
+      padding: 0.3rem 0.7rem;
+      font-size: 0.9rem;
+    }
+    .q {
+      font-size: 1.15rem;
+    }
+    .duel {
+      position: relative;
+      flex: 1 1 0;
+      min-height: 0;
+      grid-template-columns: 1fr;
+      grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 0.6rem;
+    }
+    .vs {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      translate: -50% -50%;
+      z-index: 2;
+      width: 2.4rem;
+      height: 2.4rem;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--paper);
+      font-size: 0.85rem;
+      box-shadow: 0 0 0 4px var(--paper);
     }
     .card {
       min-height: 0;
-      max-height: 34dvh;
-      padding: 1rem;
+      max-height: none;
+      padding: 0.9rem 1rem;
+      gap: 0.45rem;
+      border-radius: 18px;
+      /* long text fades out instead of being cut mid-line */
+      mask-image: linear-gradient(to bottom, #000 calc(100% - 2.2rem), transparent calc(100% - 0.4rem));
     }
-    kbd {
-      display: none;
+    .card:hover {
+      transform: none;
     }
-    .foot .small {
-      display: none;
+    .name {
+      font-size: 1.3rem;
+    }
+    .summary {
+      font-size: 0.95rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .next {
+      padding: 0.35rem 0.6rem;
+    }
+    .step {
+      font-size: 0.88rem;
+    }
+    .step.first {
+      font-size: 0.95rem;
+    }
+    .sec {
+      font-size: 0.88rem;
+    }
+    .sec .md {
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+    }
+    .foot {
+      padding: 0.2rem 0 calc(0.6rem + env(safe-area-inset-bottom));
+    }
+    .foot :global(.btn) {
+      flex: 1;
+      justify-content: center;
+      padding: 0.7rem 0.9rem;
+      font-size: 0.95rem;
+      background: var(--card);
+      border: 1.5px solid var(--line);
+    }
+    .walk {
+      margin-top: 1rem;
     }
   }
 </style>
