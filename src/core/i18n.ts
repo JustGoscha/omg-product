@@ -293,7 +293,7 @@ const en = {
   noProjects: "No projects yet",
   pan: { back: "Earlier", forward: "Later" },
   saveFailed: "Could not save",
-  facts: { reach: "Out in the world", priority: "Priority", size: "Size", confidence: "Confidence", stream: "Stream", when: "When", stakeholders: "Stakeholders" },
+  facts: { stage: "Stage", reach: "Out in the world", priority: "Priority", size: "Size", confidence: "Confidence", stream: "Stream", when: "When", stakeholders: "Stakeholders" },
   demo: {
     badge: "Demo",
     source: "omg·product on GitHub",
@@ -600,7 +600,7 @@ const de: Labels = {
   noProjects: "Noch keine Projekte",
   pan: { back: "Früher", forward: "Später" },
   saveFailed: "Speichern fehlgeschlagen",
-  facts: { reach: "Draußen in der Welt", priority: "Priorität", size: "Größe", confidence: "Sicherheit", stream: "Stream", when: "Zeitraum", stakeholders: "Beteiligte" },
+  facts: { stage: "Stufe", reach: "Draußen in der Welt", priority: "Priorität", size: "Größe", confidence: "Sicherheit", stream: "Stream", when: "Zeitraum", stakeholders: "Beteiligte" },
   demo: {
     badge: "Demo",
     source: "omg·product auf GitHub",

@@ -5,10 +5,10 @@
   import { href, router } from "../lib/router.svelte";
   import { api } from "../lib/api";
   import { md } from "../lib/md";
-  import { stageColor, stageSoft } from "../lib/stages";
   import { inPulse, localDate, mayDuel, nextPair, rank, DAILY, type PulseDay } from "../../../src/core/pulse";
   import type { ProjectInfo } from "../lib/types";
   import { isStatic } from "../lib/static";
+  import StatusPicker from "../components/StatusPicker.svelte";
 
   let { results }: { results: boolean } = $props();
 
@@ -253,10 +253,17 @@
 {#snippet card(p: ProjectInfo, key: string)}
   {@const problem = section(p, "problem")}
   {@const solution = section(p, "solution")}
-  <button class="card" class:win={picked === p.id} class:lose={!!picked && picked !== p.id} onclick={() => choose(p.id)}>
+  <div
+    class="card"
+    class:win={picked === p.id}
+    class:lose={!!picked && picked !== p.id}
+    role="button"
+    tabindex="0"
+    onclick={() => choose(p.id)}
+    onkeydown={(e) => e.key === "Enter" && choose(p.id)}
+  >
     <span class="meta">
-      <span class="stage" style="color:{stageColor(p.stage)};background:{stageSoft(p.stage)}">{t.rm.stages[p.stage] ?? p.stage}</span>
-      {#if p.reach}<span class="ini reach">{t.reach[p.reach]}</span>{/if}
+      <StatusPicker project={p} small />
       {#each initiativeNames(p) as n}<span class="ini">{n}</span>{/each}
       <kbd>{key}</kbd>
     </span>
@@ -270,7 +277,7 @@
     {#if !p.summary && !problem && !solution && Object.values(p.sections)[0]}
       <span class="sec"><span class="md">{@html md(Object.values(p.sections)[0])}</span></span>
     {/if}
-  </button>
+  </div>
 {/snippet}
 
 {#snippet nextSteps()}
@@ -470,7 +477,6 @@
     gap: 0.4rem;
     align-items: center;
   }
-  .stage,
   .ini {
     font-size: 0.75rem;
     font-weight: 750;
@@ -495,10 +501,6 @@
     font-weight: 750;
     font-size: clamp(1.35rem, 1rem + 1.4vw, 1.9rem);
     line-height: 1.1;
-  }
-  .reach {
-    background: var(--nice-soft);
-    color: var(--nice);
   }
   .next {
     font-weight: 650;
