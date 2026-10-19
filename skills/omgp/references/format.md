@@ -115,8 +115,8 @@ stage: kickoff        # idea | exploring | prototyping | kickoff | scoped | buil
 reach: unreleased     # how far it is out in the world, apart from how far it is built:
                       # unreleased | ready (market-ready) | released (public) | launched (people were told)
                       # | marketing | customers (first users / paying) | improving (improve, scale, synergies)
-snoozed: 2026-11-19   # Pulse: out of the duels until that day, then back by itself
-shelved: true         # Pulse: a zombie, comes up about ten times less often; if it wins it climbs as usual
+snoozed: 2026-11-19   # Pulse: shelved, out of the duels until that day, then back by itself
+                      # (killed = stage: dropped, never comes back)
 next:                 # the next steps, most important first, at most 3 (one string is fine too);
   - Release to the beta accounts   # Pulse cards show them, and the Pulse asks for them whenever
   - Help text for the series dialog  # a project is in the top 3

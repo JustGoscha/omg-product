@@ -54,8 +54,7 @@
   let started = $state(false);
   let picked = $state<string | null>(null);
   let history = $state<{ win: string; over: string; neither?: boolean }[]>([]);
-  const shelved = $derived(ws?.projects.filter((p) => p.shelved).map((p) => p.id) ?? []);
-  const draw = () => (pair = days && voter ? nextPair(days, ids, voter, today, { shelved }) : null);
+  const draw = () => (pair = days && voter ? nextPair(days, ids, voter, today) : null);
   $effect(() => {
     if (!started && days && ws && voter) {
       started = true;
@@ -323,7 +322,6 @@
               {t.pulse.record(r.wins, r.losses)}
               {#if p}· {p.priority} {t.pulse.declared}{/if}
               {#if r.split}<b class="split" title={t.pulse.splitHint}>⚡ {t.pulse.split}</b>{/if}
-              {#if p?.shelved}· {t.shelf.zombie}{/if}
             </span>
           </div>
           <span class="elo">{r.rating}</span>

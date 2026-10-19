@@ -50,5 +50,3 @@ export function savePulseDuel(root: string, voter: string, date: string, duel: D
 
 /** Projects that are in the pulse (see inPulse). */
 export const pulseProjects = (ws: Workspace) => ws.projects.filter((p) => inPulse(p, ws.config.profile?.doneMeans)).map((p) => p.id);
-/** Shelved projects: in the pulse, but they come up rarely. */
-export const shelvedProjects = (ws: Workspace) => ws.projects.filter((p) => p.shelved).map((p) => p.id);

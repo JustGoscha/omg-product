@@ -21,7 +21,7 @@
       error = (e as Error).message;
     }
   }
-  // snooze for a while, or shelve as a zombie that comes up rarely; "" brings it back
+  // shelve: out of the duels for a month, then back; kill: never comes back
   const today = new Date();
   const until = (days: number) => {
     const d = new Date(today);
@@ -31,12 +31,11 @@
   const snoozedNow = $derived(!!p.snoozed && p.snoozed >= until(0));
   const cfg = $derived(store.ws?.config);
   const canKill = $derived(cfg?.pulse?.kill ?? cfg?.profile?.kind !== "company");
-  const out = $derived(p.shelved || snoozedNow || p.stage === "dropped");
+  const out = $derived(snoozedNow || p.stage === "dropped");
   async function shelf(v: string) {
-    if (v === "shelve") await set({ shelved: true, snoozed: null });
-    else if (v === "kill") await set({ stage: "dropped", shelved: null, snoozed: null });
-    else if (v === "back") await set({ shelved: null, snoozed: null, ...(p.stage === "dropped" ? { stage: "paused" } : {}) });
-    else await set({ snoozed: until(Number(v)), shelved: null });
+    if (v === "shelve") await set({ snoozed: until(30) });
+    else if (v === "kill") await set({ stage: "dropped", snoozed: null });
+    else if (v === "back") await set({ snoozed: null, ...(p.stage === "dropped" ? { stage: "paused" } : {}) });
     onshelve?.();
   }
   // the chip must not choose the card it sits on
@@ -60,14 +59,11 @@
   <label class="chip shelf" class:on={out} class:dead={p.stage === "dropped"} title={t.shelf.hint}>
     <select value="" disabled={isStatic} onchange={(e) => shelf((e.target as HTMLSelectElement).value)}>
       <option value="" disabled selected>{t.shelf.title}</option>
-      <option value="7">{t.shelf.snooze(t.shelf.week)}</option>
-      <option value="30">{t.shelf.snooze(t.shelf.month)}</option>
-      <option value="90">{t.shelf.snooze(t.shelf.months3)}</option>
-      <option value="shelve">{t.shelf.shelve}</option>
+      {#if !out}<option value="shelve">{t.shelf.shelve}</option>{/if}
       {#if canKill && p.stage !== "dropped"}<option value="kill">{t.shelf.kill}</option>{/if}
       {#if out}<option value="back">{t.shelf.back}</option>{/if}
     </select>
-    <span>{p.stage === "dropped" ? t.shelf.killed : p.shelved ? t.shelf.zombie : snoozedNow ? t.shelf.until(p.snoozed!) : "💤"} ▾</span>
+    <span>{p.stage === "dropped" ? t.shelf.killed : snoozedNow ? t.shelf.until(p.snoozed!) : "💤"} ▾</span>
   </label>
   {#if error}<span class="err">{error}</span>{/if}
 </span>

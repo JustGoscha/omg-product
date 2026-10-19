@@ -394,9 +394,8 @@ export const Project = z.object({
   stage: z.enum(stages).default("idea"),
   priority: z.enum(["urgent", "high", "medium", "low"]).default("medium"),
   reach: z.enum(reaches).optional(),
-  // Pulse: snoozed until a day (out of the pulse till then), or shelved (a zombie: comes up rarely)
+  // Pulse: shelved until a day (out of the duels till then, then back by itself)
   snoozed: timeValue.optional(),
-  shelved: z.boolean().optional(),
   // the next steps, most important first, at most 3: "Landing page", "Post in r/animation"
   next: z
     .union([text, z.array(z.coerce.string())])

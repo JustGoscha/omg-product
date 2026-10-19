@@ -102,19 +102,10 @@ describe("pulse", () => {
     expect(bottom).toBeGreaterThan(0);
   });
 
-  test("snoozed: out until the day; shelved: comes up rarely", () => {
+  test("shelved: out of the pulse until the day, then back", () => {
     expect(inPulse({ stage: "building", snoozed: "2026-11-01" }, undefined, "2026-10-19")).toBe(false);
     expect(inPulse({ stage: "building", snoozed: "2026-11-01" }, undefined, "2026-11-01")).toBe(true);
-    const many = Array.from({ length: 10 }, (_, i) => `p${i}`);
-    let zombie = 0;
-    let other = 0;
-    for (let v = 0; v < 400; v++) {
-      const p = nextPair([], many, `v${v}`, "2026-10-19", { shelved: ["p0"] })!;
-      if (p.includes("p0")) zombie++;
-      if (p.includes("p1")) other++;
-    }
-    expect(zombie).toBeGreaterThan(0);
-    expect(zombie * 4).toBeLessThan(other);
+    expect(inPulse({ stage: "dropped" }, "never", "2026-10-19")).toBe(false);
   });
 
   test("keep going is on unless the workspace turns it off", () => {
