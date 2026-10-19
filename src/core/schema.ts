@@ -25,6 +25,8 @@ export const stages = [
   "dropped",
 ] as const;
 export const sizes = ["xs", "s", "m", "l", "xl"] as const;
+// how far a project is out in the world, apart from how far it is built (stage)
+export const reaches = ["unreleased", "released", "launched", "traction"] as const;
 export const triageValues = ["must", "should", "nice", "no"] as const;
 export const phases = ["context", "problem", "solution", "decisions", "wrapup"] as const;
 
@@ -326,6 +328,18 @@ export const ProductConfig = z.object({
       concurrency: z.number().int().min(1).max(4).default(1),
     })
     .optional(),
+  // who this workspace is for and what counts, written by the omgp-onboard interview
+  profile: z
+    .object({
+      kind: z.enum(["personal", "company"]).optional(),
+      goals: strList.optional(),
+      // a project only counts as done once it is this far out in the world
+      doneMeans: z.enum(reaches).optional(),
+      // at most this many projects in exploring … rollout at once
+      focus: z.number().int().min(1).optional(),
+      capacity: text.optional(),
+    })
+    .optional(),
   // the swipe deck: cards per round, whether people may keep going after a round, votes
   // without names, how far one day moves a rating
   pulse: z
@@ -375,6 +389,8 @@ export const Project = z.object({
   initiatives: strList.default([]),
   stage: z.enum(stages).default("idea"),
   priority: z.enum(["urgent", "high", "medium", "low"]).default("medium"),
+  reach: z.enum(reaches).optional(),
+  next: text.optional(), // the next move, one sentence: "Landing page + post in r/animation"
   size: z.enum(sizes).optional(),
   confidence: z.enum(["high", "medium", "low"]).default("medium"),
   stream: z.string().optional(),

@@ -11,8 +11,18 @@ export const START = 1500;
 export const K = 32;
 /** duels per round */
 export const DAILY = 5;
-// projects nobody needs to compare any more (paused ones stay: revive or drop is the question)
-export const OUT_OF_PULSE = new Set(["done", "dropped"]);
+const REACH = ["unreleased", "released", "launched", "traction"];
+
+/**
+ * Is a project in the pulse? Dropped ones are not; done ones only once they are as far out in
+ * the world as the workspace says done means (built is not launched). Paused ones stay:
+ * revive or drop is the question.
+ */
+export function inPulse(p: { stage?: string; reach?: string }, doneMeans?: string) {
+  if (p.stage === "dropped") return false;
+  if (p.stage !== "done" || !doneMeans) return p.stage !== "done";
+  return REACH.indexOf(p.reach ?? "unreleased") < REACH.indexOf(doneMeans);
+}
 
 export interface Duel {
   win: string;

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addDuel, elo, mayDuel, nextPair, rank, START, type Duel, type PulseDay } from "./pulse.ts";
+import { addDuel, elo, inPulse, mayDuel, nextPair, rank, START, type Duel, type PulseDay } from "./pulse.ts";
 import { loadPulse, savePulseDuel } from "./pulse-files.ts";
 
 const ids = ["a", "b", "c", "d"];
@@ -82,5 +82,15 @@ describe("pulse", () => {
     savePulseDuel(root, "Anna Ö", "2026-10-19", { win: "a", over: "b" }, true);
     expect(readFileSync(join(root, "pulse/2026-10-19/anna-o.yaml"), "utf8")).toContain("win: c");
     expect(loadPulse(root)).toEqual([{ voter: "Anna Ö", date: "2026-10-19", duels: [{ win: "c", over: "a" }] }]);
+  });
+});
+
+describe("done means out in the world", () => {
+  test("a built project stays in the pulse until it is as far out as done means", () => {
+    expect(inPulse({ stage: "done" })).toBe(false);
+    expect(inPulse({ stage: "done", reach: "released" }, "launched")).toBe(true);
+    expect(inPulse({ stage: "done", reach: "traction" }, "launched")).toBe(false);
+    expect(inPulse({ stage: "paused" }, "launched")).toBe(true);
+    expect(inPulse({ stage: "dropped" }, "released")).toBe(false);
   });
 });

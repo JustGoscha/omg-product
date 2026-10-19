@@ -53,6 +53,20 @@ agent:                            # optional: lets the studio start an agent for
   command: "claude -p --permission-mode acceptEdits"   # prompt is passed on stdin
 ```
 
+`profile` (written by the `omgp-onboard` interview) says who the workspace is for and what counts:
+
+```yaml
+profile:
+  kind: personal          # personal | company
+  goals: [income, portfolio]
+  doneMeans: launched     # a project is only done this far out in the world; until then it stays
+                          # in the Pulse and the roadmap lists it under "built, not out in the world"
+  focus: 3                # at most this many projects in exploring … rollout
+  capacity: 10 h/week
+pulse: { daily: 5, more: true, anonymous: false, k: 32 }   # duels per round, keep going after a round,
+                          # votes without names, how far one duel moves a rating
+```
+
 ## vision.md
 
 ```markdown
@@ -96,6 +110,9 @@ id: recurring-jobs
 name: Recurring maintenance jobs
 initiatives: [less-admin-time]
 stage: kickoff        # idea | exploring | prototyping | kickoff | scoped | building | rollout | measuring | done | paused | dropped
+reach: unreleased     # how far it is out in the world, apart from how far it is built:
+                      # unreleased | released (public) | launched (people were told) | traction (used / paying)
+next: Release to the beta accounts   # the next move, one sentence; the Pulse shows it on the card
 priority: high        # urgent | high | medium | low
 size: m               # effort in person-weeks: xs .5 · s 1 · m 2 · l 4 · xl 8
 confidence: medium    # high | medium | low — how sure we are about scope and timing
@@ -445,19 +462,21 @@ be picked; mark it `baseline: true` on the option to hide its pick button.
 
 ## Pulse — pulse/<YYYY-MM-DD>/<voter>.yaml
 
-What people feel matters most, from a short swipe deck a day in the studio (`#/pulse`).
-The studio writes one file per person and day; agents read the ranking with `omgp pulse [--json]`.
+What people feel matters most, from duels in the studio (`#/pulse`): two projects, "what is
+more important?", in rounds of `pulse.daily`. The studio writes one file per person and day;
+agents read the ranking with `omgp pulse [--json]`.
 
 ```yaml
 voter: Anna
 date: 2026-10-19
-votes: { offline-sync: top, csv-import: high, customer-portal: low, job-templates: drop }
+duels:
+  - { win: offline-sync, over: csv-import }
+  - { win: customer-portal, over: offline-sync }
 ```
 
-Tiers: `top` (↑ this first), `high` (→ important), `low` (↓ not now), `drop` (← shouldn't do it).
-Each file becomes Elo matches between the projects in it (higher tier wins, same tier draws),
-applied in date order, so recent days weigh more. Done and dropped projects are left out.
-`product.yaml` can set `pulse: { daily: 10, k: 32 }` (cards per day, how far one day moves a rating).
+Every duel is an Elo match, applied in date order, so recent days weigh more. Opponents are
+random, so a project from the bottom meets the top and jumps when it wins. Dropped projects
+are left out; done ones too, once they are as far out as `profile.doneMeans`.
 
 ## Results — sessions/<id>.results.json
 

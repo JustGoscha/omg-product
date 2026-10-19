@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { listDir, parseYaml, writeText, yamlStringify } from "./files.ts";
-import { addDuel, isDuel, OUT_OF_PULSE, voterSlug, type Duel, type PulseDay } from "./pulse.ts";
+import { addDuel, inPulse, isDuel, voterSlug, type Duel, type PulseDay } from "./pulse.ts";
 import type { Workspace } from "./workspace.ts";
 
 // pulse/<YYYY-MM-DD>/<voter>.yaml, one file per person and day, the duels in order:
@@ -42,5 +42,5 @@ export function savePulseDuel(root: string, voter: string, date: string, duel: D
   writeText(path, yamlStringify({ voter: day.voter, date, duels: day.duels }));
 }
 
-/** Projects that are in the pulse: everything that is not done or dropped. */
-export const pulseProjects = (ws: Workspace) => ws.projects.filter((p) => !OUT_OF_PULSE.has(p.stage ?? "idea")).map((p) => p.id);
+/** Projects that are in the pulse (see inPulse). */
+export const pulseProjects = (ws: Workspace) => ws.projects.filter((p) => inPulse(p, ws.config.profile?.doneMeans)).map((p) => p.id);

@@ -12,6 +12,7 @@ with `SKILL.md`, YAML frontmatter `name` + `description`, optional
 | skill | use it for | writes |
 |---|---|---|
 | [`omgp`](omgp/SKILL.md) | the core: why omgp exists, workspace layout, lifecycle, CLI, golden rules, which skill when. Holds the format spec in `omgp/references/format.md`. | — |
+| [`omgp-onboard`](omgp-onboard/SKILL.md) | a new workspace: find every project, interview for goals, what "done" means and focus, set stage, reach and next per project | `product.yaml`, `vision.md`, `rules.md`, `project.md` |
 | [`omgp-explore`](omgp-explore/SKILL.md) | idea → framed problem: interview, research (Linear, codebase, analytics), Problem / For whom / Metric, assumptions, open decisions | `project.md` |
 | [`omgp-prototype`](omgp-prototype/SKILL.md) | standalone HTML prototypes with brand tokens, realistic data, hash states, `data-focus` hooks, variants, simulated events, non-UI flows | `prototypes/*.html` |
 | [`omgp-kickoff`](omgp-kickoff/SKILL.md) | preparing a session that leads tired people to decisions: decision mining, sorting (level, now/later, one-way/two-way), YAGNI, visual selection, writing rules, time budget | `sessions/<id>.yaml` |

@@ -86,6 +86,8 @@
       <StageTrack project={p} locale={ws?.config.locale} />
       <dl class="facts">
         <div><dt>{t.facts.priority}</dt><dd>{p.priority}</dd></div>
+        {#if p.reach}<div><dt>{t.facts.reach}</dt><dd>{t.reach[p.reach]}</dd></div>{/if}
+        {#if p.next}<div><dt>{t.nextMove}</dt><dd>{p.next}</dd></div>{/if}
         {#if p.size}<div><dt>{t.facts.size}</dt><dd>{p.size}</dd></div>{/if}
         <div><dt>{t.facts.confidence}</dt><dd>{p.confidence}</dd></div>
         {#if p.stream}<div><dt>{t.facts.stream}</dt><dd>{ws?.config.roadmap.streams.find((s) => s.id === p.stream)?.name ?? p.stream}</dd></div>{/if}

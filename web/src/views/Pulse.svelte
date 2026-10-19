@@ -6,7 +6,7 @@
   import { api } from "../lib/api";
   import { md } from "../lib/md";
   import { stageColor, stageSoft } from "../lib/stages";
-  import { localDate, mayDuel, nextPair, rank, DAILY, OUT_OF_PULSE, type PulseDay } from "../../../src/core/pulse";
+  import { inPulse, localDate, mayDuel, nextPair, rank, DAILY, type PulseDay } from "../../../src/core/pulse";
   import type { ProjectInfo } from "../lib/types";
 
   let { results }: { results: boolean } = $props();
@@ -43,7 +43,7 @@
   load();
   $effect(() => store.on((e) => (e.type === "change" && e.paths?.some((p) => p.startsWith("pulse/")) ? load() : undefined)));
 
-  const ids = $derived(ws?.projects.filter((p) => !OUT_OF_PULSE.has(p.stage ?? "idea")).map((p) => p.id) ?? []);
+  const ids = $derived(ws?.projects.filter((p) => inPulse(p, ws.config.profile?.doneMeans)).map((p) => p.id) ?? []);
   const cfg = $derived(ws?.config.pulse ?? {});
   const daily = $derived(cfg.daily ?? DAILY);
 
@@ -196,10 +196,12 @@
   <button class="card" class:win={picked === p.id} class:lose={!!picked && picked !== p.id} onclick={() => choose(p.id)}>
     <span class="meta">
       <span class="stage" style="color:{stageColor(p.stage)};background:{stageSoft(p.stage)}">{t.rm.stages[p.stage] ?? p.stage}</span>
+      {#if p.reach}<span class="ini reach">{t.reach[p.reach]}</span>{/if}
       {#each initiativeNames(p) as n}<span class="ini">{n}</span>{/each}
       <kbd>{key}</kbd>
     </span>
     <span class="name">{p.name}</span>
+    {#if p.next}<span class="next"><b>{t.nextMove}</b> {p.next}</span>{/if}
     {#if p.summary}<span class="summary">{p.summary}</span>{/if}
     {#if problem}<span class="sec"><b>{t.phases.problem}</b><span class="md">{@html md(problem)}</span></span>{/if}
     {#if solution}<span class="sec"><b>{t.phases.solution}</b><span class="md">{@html md(solution)}</span></span>{/if}
@@ -406,6 +408,20 @@
     font-weight: 750;
     font-size: clamp(1.35rem, 1rem + 1.4vw, 1.9rem);
     line-height: 1.1;
+  }
+  .reach {
+    background: var(--nice-soft);
+    color: var(--nice);
+  }
+  .next {
+    font-weight: 650;
+    font-size: 1.05rem;
+    padding: 0.5rem 0.7rem;
+    border-radius: 12px;
+    background: var(--should-soft);
+  }
+  .next b {
+    color: var(--should);
   }
   .summary {
     font-size: 1.05rem;

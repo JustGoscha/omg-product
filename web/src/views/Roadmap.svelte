@@ -496,7 +496,9 @@
 
   const sel = $derived(selected ? ws?.projects.find((p) => p.id === selected) : null);
   const name = (id: string) => ws?.projects.find((p) => p.id === id)?.name ?? id;
-  const findingsCount = $derived(ws ? ws.analysis.conflicts.length + ws.analysis.cycles.length + ws.analysis.overload.length + ws.analysis.bottlenecks.length : 0);
+  const findingsCount = $derived(
+    ws ? ws.analysis.conflicts.length + ws.analysis.cycles.length + ws.analysis.overload.length + ws.analysis.bottlenecks.length + ws.analysis.notOut.length + (ws.analysis.unfocused ? 1 : 0) : 0,
+  );
   const excerpt = (p: ProjectInfo) => {
     const k = Object.keys(p.sections).find((s) => s.startsWith("problem"));
     return (k ? p.sections[k] : (p.summary ?? "")).replace(/[#*_>`-]/g, "").trim().slice(0, 280);
@@ -800,6 +802,18 @@
           {#if a.cycles.length}
             <h3 class="bad">Cycles</h3>
             {#each a.cycles as cy}<p class="finding">{cy.map(name).join(" → ")}</p>{/each}
+          {/if}
+          {#if a.unfocused}
+            <h3 class="warn">{t.unfocused(a.unfocused.active.length, a.unfocused.focus)}</h3>
+            {#each a.unfocused.active as id}<button class="finding" onclick={() => reveal(id)}>{name(id)}</button>{/each}
+          {/if}
+          {#if a.notOut.length}
+            <h3 class="warn">{t.notOut}</h3>
+            <p class="muted small">{t.notOutHint}</p>
+            {#each a.notOut as id}
+              {@const p = ws.projects.find((x) => x.id === id)}
+              <button class="finding" onclick={() => reveal(id)}><strong>{name(id)}</strong> <span class="muted">{t.reach[p?.reach ?? "unreleased"]}{p?.next ? ` · ${p.next}` : ""}</span></button>
+            {/each}
           {/if}
           {#if a.overload.length}
             <h3 class="warn">{t.overload}</h3>
