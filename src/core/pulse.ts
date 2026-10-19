@@ -11,17 +11,27 @@ export const START = 1500;
 export const K = 32;
 /** duels per round */
 export const DAILY = 5;
-const REACH = ["unreleased", "released", "launched", "traction"];
+/**
+ * How far a project is out in the world, apart from how far it is built (stage). Built is
+ * not done: after it come the release, the launch, marketing, the first customers and
+ * improving what is out.
+ */
+export const reaches = ["unreleased", "ready", "released", "launched", "marketing", "customers", "improving"] as const;
+export type Reach = (typeof reaches)[number];
+export const reachIndex = (r: string | undefined) => Math.max(0, reaches.indexOf((r ?? "unreleased") as Reach));
 
 /**
- * Is a project in the pulse? Dropped ones are not; done ones only once they are as far out in
- * the world as the workspace says done means (built is not launched). Paused ones stay:
- * revive or drop is the question.
+ * Is a project in the pulse? Dropped ones are not. Done ones only while they are not yet as
+ * far out as `doneMeans`; with `never` (or no doneMeans) done never means out of the pulse,
+ * unless nothing says otherwise: without a profile, done is done. Paused ones stay: revive or
+ * drop is the question.
  */
 export function inPulse(p: { stage?: string; reach?: string }, doneMeans?: string) {
   if (p.stage === "dropped") return false;
-  if (p.stage !== "done" || !doneMeans) return p.stage !== "done";
-  return REACH.indexOf(p.reach ?? "unreleased") < REACH.indexOf(doneMeans);
+  if (p.stage !== "done") return true;
+  if (!doneMeans) return false;
+  if (doneMeans === "never") return true;
+  return reachIndex(p.reach) < reachIndex(doneMeans);
 }
 
 export interface Duel {

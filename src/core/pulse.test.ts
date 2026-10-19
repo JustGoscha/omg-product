@@ -89,7 +89,9 @@ describe("done means out in the world", () => {
   test("a built project stays in the pulse until it is as far out as done means", () => {
     expect(inPulse({ stage: "done" })).toBe(false);
     expect(inPulse({ stage: "done", reach: "released" }, "launched")).toBe(true);
-    expect(inPulse({ stage: "done", reach: "traction" }, "launched")).toBe(false);
+    expect(inPulse({ stage: "done", reach: "customers" }, "launched")).toBe(false);
+    // nothing is ever done: after the build come launch, marketing, customers, improving
+    expect(inPulse({ stage: "done", reach: "improving" }, "never")).toBe(true);
     expect(inPulse({ stage: "paused" }, "launched")).toBe(true);
     expect(inPulse({ stage: "dropped" }, "released")).toBe(false);
   });

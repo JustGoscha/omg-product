@@ -59,8 +59,9 @@ agent:                            # optional: lets the studio start an agent for
 profile:
   kind: personal          # personal | company
   goals: [income, portfolio]
-  doneMeans: launched     # a project is only done this far out in the world; until then it stays
-                          # in the Pulse and the roadmap lists it under "built, not out in the world"
+  doneMeans: launched     # a project is only done this far out in the world (a reach), or never:
+                          # after the build come launch, marketing, customers, improving. Until then
+                          # it stays in the Pulse; built but not launched is listed on the roadmap
   focus: 3                # at most this many projects in exploring … rollout
   capacity: 10 h/week
 pulse: { daily: 5, more: true, anonymous: false, k: 32 }   # duels per round, keep going after a round,
@@ -111,8 +112,11 @@ name: Recurring maintenance jobs
 initiatives: [less-admin-time]
 stage: kickoff        # idea | exploring | prototyping | kickoff | scoped | building | rollout | measuring | done | paused | dropped
 reach: unreleased     # how far it is out in the world, apart from how far it is built:
-                      # unreleased | released (public) | launched (people were told) | traction (used / paying)
-next: Release to the beta accounts   # the next move, one sentence; the Pulse shows it on the card
+                      # unreleased | ready (market-ready) | released (public) | launched (people were told)
+                      # | marketing | customers (first users / paying) | improving (improve, scale, synergies)
+next:                 # the next steps, most important first, at most 3 (one string is fine too);
+  - Release to the beta accounts   # Pulse cards show them, and the Pulse asks for them whenever
+  - Help text for the series dialog  # a project is in the top 3
 priority: high        # urgent | high | medium | low
 size: m               # effort in person-weeks: xs .5 · s 1 · m 2 · l 4 · xl 8
 confidence: medium    # high | medium | low — how sure we are about scope and timing

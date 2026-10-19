@@ -1,6 +1,6 @@
 ---
 name: omgp-onboard
-description: Set up an omgp workspace for how this person or company actually works, by interviewing them. Finds every project (folders, git hosts, trackers, other machines), sets the profile in product.yaml (personal or company, goals, what "done" means, focus), writes vision.md and rules.md with the decision criteria, and gives every project its stage, how far it is out in the world (reach) and its next move. Use when a workspace is new or still has the scaffold from `omgp init`, when the user says "onboard me", "set up omgp for us", "get an overview of all my projects", "what should I work on", or when projects have no reach or next yet.
+description: Set up an omgp workspace for how this person or company actually works, by interviewing them. Finds every project (folders, git hosts, trackers, other machines), sets the profile in product.yaml (personal or company, goals, what "done" means, focus), writes vision.md and rules.md with the decision criteria, and gives every project its stage, how far it is out in the world (reach) and its next steps. Use when a workspace is new or still has the scaffold from `omgp init`, when the user says "onboard me", "set up omgp for us", "get an overview of all my projects", "what should I work on", or when projects have no reach or next yet.
 ---
 
 # omgp-onboard — what are we deciding, and by what?
@@ -43,9 +43,11 @@ free answer). Recommend; don't make them type what you can propose.
 2. What are the projects for? Personal: income, reputation/portfolio, learning, fun,
    tools I use myself. Company: strategy, revenue, retention, customers' pain,
    tech health.
-3. When is a project done? `released` (public), `launched` (people were told: a
-   post, a launch, customers informed), `traction` (used / paying). This becomes
-   `profile.doneMeans`.
+3. When is a project done? Many say never: after the build come market-ready,
+   release, launch, marketing, the first customers, then improving and building
+   synergies. That is the `reach` ladder; `profile.doneMeans` is a rung of it, or
+   `never` (done projects stay in the Pulse, their next move is launch, market or
+   improve).
 4. How many projects at once? Hours per week (personal) or people and streams
    (company). This becomes `profile.focus` and the streams.
 5. Projects you can't see from here: other computers, other accounts, ideas only
@@ -70,11 +72,13 @@ Propose from the evidence, in a table, and let the user correct in one pass:
 
 | project | stage | reach | next |
 |---|---|---|---|
-| 30DayAnimator | done | released | Launch: email list + three posts with student results |
+| 30DayAnimator | done | released | 1. Email list 2. Three posts with student results 3. … |
 
 - `stage`: how far it is **built** (idea … done, paused, dropped).
-- `reach`: how far it is **out**: unreleased · released · launched · traction.
-- `next`: one sentence, the next move, concrete enough to start tomorrow. Typical
+- `reach`: how far it is **out**: unreleased · ready · released · launched ·
+  marketing · customers · improving.
+- `next`: the next steps, most important first, at most 3, each concrete enough to
+  start tomorrow. The Pulse asks the top 3 projects for them after every round. Typical
   moves: build X · release (deploy, store, publish) · integrate with Y · launch
   (post, mailing, Product Hunt, tell customers) · market (landing page, SEO, ads)
   · improve for users · maintain · sunset.

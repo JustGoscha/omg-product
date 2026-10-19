@@ -1,5 +1,6 @@
 import type { ProductConfigT } from "./schema.ts";
 import { addDays, daysBetween, sizeWeeks, weekStart, type Span } from "./time.ts";
+import { reachIndex } from "./pulse.ts";
 
 interface ProjectLike {
   id: string;
@@ -20,7 +21,7 @@ export interface Analysis {
   delegatable: string[];
   overload: { stream: string; from: string; to: string; peak: number; capacity: number; projects: string[] }[];
   unscheduled: string[];
-  /** built, but not as far out in the world as profile.doneMeans asks */
+  /** built, but not launched yet (or not as far out as profile.doneMeans asks) */
   notOut: string[];
   /** more projects in progress than profile.focus allows */
   unfocused: { active: string[]; focus: number } | null;
@@ -152,13 +153,12 @@ export function analyze(input: { today: string; config: ProductConfigT; projects
     .filter((p) => !p.span && (p.priority === "urgent" || p.priority === "high") && p.stage !== "paused")
     .map((p) => p.id);
 
-  // done means out in the world: built projects that aren't there yet
-  const REACH = ["unreleased", "released", "launched", "traction"];
+  // built is not out in the world: built projects that are not launched yet. Only with a profile
+  // (the onboarding), without one a company workspace's rollout stages say enough.
   const doneMeans = config.profile?.doneMeans;
-  const notOut = doneMeans
-    ? projects
-        .filter((p) => ["rollout", "measuring", "done"].includes(p.stage) && REACH.indexOf(p.reach ?? "unreleased") < REACH.indexOf(doneMeans))
-        .map((p) => p.id)
+  const bar = reachIndex(!doneMeans || doneMeans === "never" ? "launched" : doneMeans);
+  const notOut = config.profile
+    ? projects.filter((p) => ["rollout", "measuring", "done"].includes(p.stage) && reachIndex(p.reach) < bar).map((p) => p.id)
     : [];
   const inProgress = projects.filter((p) => ["exploring", "prototyping", "kickoff", "scoped", "building", "rollout"].includes(p.stage)).map((p) => p.id);
   const focus = config.profile?.focus;

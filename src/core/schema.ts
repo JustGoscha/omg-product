@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { checkpointValues, scaleValues, triageScales } from "./scales.ts";
+import { reaches } from "./pulse.ts";
 
 // The file format lives in skills/omgp/references/format.md. Keep both in sync.
 
@@ -25,8 +26,7 @@ export const stages = [
   "dropped",
 ] as const;
 export const sizes = ["xs", "s", "m", "l", "xl"] as const;
-// how far a project is out in the world, apart from how far it is built (stage)
-export const reaches = ["unreleased", "released", "launched", "traction"] as const;
+export { reaches } from "./pulse.ts";
 export const triageValues = ["must", "should", "nice", "no"] as const;
 export const phases = ["context", "problem", "solution", "decisions", "wrapup"] as const;
 
@@ -333,8 +333,9 @@ export const ProductConfig = z.object({
     .object({
       kind: z.enum(["personal", "company"]).optional(),
       goals: strList.optional(),
-      // a project only counts as done once it is this far out in the world
-      doneMeans: z.enum(reaches).optional(),
+      // a project only counts as done once it is this far out in the world; never: nothing is
+      // ever done, after the build come launch, marketing, customers, improving
+      doneMeans: z.enum([...reaches, "never"]).optional(),
       // at most this many projects in exploring … rollout at once
       focus: z.number().int().min(1).optional(),
       capacity: text.optional(),
@@ -390,7 +391,11 @@ export const Project = z.object({
   stage: z.enum(stages).default("idea"),
   priority: z.enum(["urgent", "high", "medium", "low"]).default("medium"),
   reach: z.enum(reaches).optional(),
-  next: text.optional(), // the next move, one sentence: "Landing page + post in r/animation"
+  // the next steps, most important first, at most 3: "Landing page", "Post in r/animation"
+  next: z
+    .union([text, z.array(z.coerce.string())])
+    .transform((v) => (Array.isArray(v) ? v : [v]).map((s) => s.trim()).filter(Boolean).slice(0, 3))
+    .optional(),
   size: z.enum(sizes).optional(),
   confidence: z.enum(["high", "medium", "low"]).default("medium"),
   stream: z.string().optional(),

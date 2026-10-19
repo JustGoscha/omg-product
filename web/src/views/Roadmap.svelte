@@ -812,7 +812,7 @@
             <p class="muted small">{t.notOutHint}</p>
             {#each a.notOut as id}
               {@const p = ws.projects.find((x) => x.id === id)}
-              <button class="finding" onclick={() => reveal(id)}><strong>{name(id)}</strong> <span class="muted">{t.reach[p?.reach ?? "unreleased"]}{p?.next ? ` · ${p.next}` : ""}</span></button>
+              <button class="finding" onclick={() => reveal(id)}><strong>{name(id)}</strong> <span class="muted">{t.reach[p?.reach ?? "unreleased"]}{p?.next?.length ? ` · ${p.next[0]}` : ""}</span></button>
             {/each}
           {/if}
           {#if a.overload.length}

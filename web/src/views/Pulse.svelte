@@ -8,6 +8,7 @@
   import { stageColor, stageSoft } from "../lib/stages";
   import { inPulse, localDate, mayDuel, nextPair, rank, DAILY, type PulseDay } from "../../../src/core/pulse";
   import type { ProjectInfo } from "../lib/types";
+  import { isStatic } from "../lib/static";
 
   let { results }: { results: boolean } = $props();
 
@@ -123,6 +124,34 @@
   const ranked = $derived(days && ws ? rank(days, ids, { today, voter: who === "me" ? voter : undefined, k: cfg.k }) : []);
   const people = $derived(new Set((days ?? []).map((d) => d.voter.toLowerCase())).size);
   const anyDuels = $derived(ranked.some((r) => r.wins + r.losses > 0));
+
+  // the top 3 always get asked for their 3 most important next steps; saved into project.md
+  const TOP = 3;
+  const tops = $derived(
+    isStatic
+      ? []
+      : ranked
+          .slice(0, TOP)
+          .filter((r) => r.wins + r.losses > 0)
+          .map((r, i) => ({ r, p: store.project(r.id)!, rank: i + 1 }))
+          .filter((x) => x.p),
+  );
+  let drafts = $state<Record<string, string[]>>({});
+  let editing = $state<Set<string>>(new Set());
+  const draft = (p: ProjectInfo) => drafts[p.id] ?? [0, 1, 2].map((i) => p.next?.[i] ?? "");
+  const setDraft = (p: ProjectInfo, i: number, v: string) => (drafts[p.id] = draft(p).map((x, j) => (j === i ? v : x)));
+  async function saveSteps(id: string) {
+    const p = store.project(id);
+    if (!p) return;
+    try {
+      await api.patchProject(id, { next: draft(p).map((s) => s.trim()).filter(Boolean) });
+      delete drafts[id];
+      editing = new Set([...editing].filter((x) => x !== id));
+      await store.load();
+    } catch (e) {
+      error = (e as Error).message;
+    }
+  }
 </script>
 
 <div class="pulse">
@@ -158,6 +187,7 @@
           {#if pair && canMore}<button class="btn primary" onclick={more}>{t.pulse.more(daily)}</button>{/if}
         </div>
       </section>
+      {@render nextSteps()}
       {@render ranking(5)}
       <p class="center"><a href={href("/pulse/results")}>{t.pulse.results} →</a></p>
     {:else if a && b && pair}
@@ -186,6 +216,7 @@
         <button class:on={who === "me"} onclick={() => (who = "me")}>{t.pulse.justMe}</button>
       </div>
     </section>
+    {@render nextSteps()}
     {@render ranking(Infinity)}
   {/if}
 </div>
@@ -201,7 +232,9 @@
       <kbd>{key}</kbd>
     </span>
     <span class="name">{p.name}</span>
-    {#if p.next}<span class="next"><b>{t.nextMove}</b> {p.next}</span>{/if}
+    {#if p.next?.length}
+      <span class="next"><b>{t.nextMove}</b>{#each p.next as s, i}<span class="step" class:first={i === 0}>{i + 1}. {s}</span>{/each}</span>
+    {/if}
     {#if p.summary}<span class="summary">{p.summary}</span>{/if}
     {#if problem}<span class="sec"><b>{t.phases.problem}</b><span class="md">{@html md(problem)}</span></span>{/if}
     {#if solution}<span class="sec"><b>{t.phases.solution}</b><span class="md">{@html md(solution)}</span></span>{/if}
@@ -209,6 +242,31 @@
       <span class="sec"><span class="md">{@html md(Object.values(p.sections)[0])}</span></span>
     {/if}
   </button>
+{/snippet}
+
+{#snippet nextSteps()}
+  {#if tops.length}
+    <section class="tops">
+      {#each tops as { r, p, rank: n } (r.id)}
+        {@const missing = (p.next?.length ?? 0) < 3}
+        {@const open = missing || editing.has(p.id)}
+        <div class="ask" class:open>
+          <h3>{missing ? t.steps.ask(p.name, n) : t.steps.check(p.name, n)}</h3>
+          {#if open}
+            <form onsubmit={(e) => (e.preventDefault(), saveSteps(p.id))}>
+              {#each [0, 1, 2] as i}
+                <input class="field" placeholder={t.steps.placeholder[i]} value={draft(p)[i]} oninput={(e) => setDraft(p, i, (e.target as HTMLInputElement).value)} />
+              {/each}
+              <div class="row"><button class="btn primary small" type="submit">{t.steps.save}</button></div>
+            </form>
+          {:else}
+            <ol>{#each p.next ?? [] as s}<li>{s}</li>{/each}</ol>
+            <div class="row"><button class="btn small ghost" onclick={() => (editing = new Set([...editing, p.id]))}>{t.steps.edit}</button></div>
+          {/if}
+        </div>
+      {/each}
+    </section>
+  {/if}
 {/snippet}
 
 {#snippet ranking(max: number)}
@@ -420,8 +478,54 @@
     border-radius: 12px;
     background: var(--should-soft);
   }
+  .next {
+    display: grid;
+    gap: 0.15rem;
+  }
   .next b {
     color: var(--should);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .step {
+    font-weight: 500;
+    font-size: 0.95rem;
+  }
+  .step.first {
+    font-weight: 700;
+    font-size: 1.02rem;
+  }
+
+  /* ---- next steps for the top projects */
+  .tops {
+    display: grid;
+    gap: 0.7rem;
+  }
+  .ask {
+    display: grid;
+    gap: 0.5rem;
+    background: var(--card);
+    border-radius: 16px;
+    padding: 1rem;
+    border: 2px solid var(--should-soft);
+  }
+  .ask.open {
+    border-color: var(--should);
+  }
+  .ask h3 {
+    font-size: 1.02rem;
+  }
+  .ask ol {
+    margin: 0;
+    padding-left: 1.3rem;
+    color: var(--ink-2);
+  }
+  .ask .field {
+    width: 100%;
+  }
+  .ask .row {
+    justify-content: flex-end;
   }
   .summary {
     font-size: 1.05rem;
