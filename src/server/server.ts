@@ -12,6 +12,7 @@ import type { RequestT } from "../core/schema.ts";
 import { anchorThreads, EditConflict, loadComments, replaceBody, replaceSection, ROOT_SCOPE, scopeDir, updateComments } from "../core/comments.ts";
 import { patchStep } from "../core/session-edit.ts";
 import type { CommentOp } from "../core/comment-ops.ts";
+import { loadPulse, savePulseVote } from "../core/pulse-files.ts";
 
 const annotateJs = () => readFileSync(ANNOTATE_JS, "utf8");
 const webDist = WEB_DIST;
@@ -144,6 +145,17 @@ export function serve({ root, port, host }: ServeOptions) {
         }
 
         if (path === "/api/workspace") return json(workspace());
+
+        // pulse: GET every day's votes, POST one swipe { voter, date, project, tier|null }
+        if (path === "/api/pulse") {
+          if (req.method === "POST") {
+            const { voter, date, project, tier } = (await req.json()) as { voter: string; date: string; project: string; tier: string | null };
+            if (!voter?.trim()) return json({ error: "who votes?" }, 400);
+            if (!workspace().projects.some((p) => p.id === project)) return json({ error: "project not found" }, 404);
+            savePulseVote(root, voter.trim(), date, project, tier as never);
+          }
+          return json({ days: loadPulse(root) });
+        }
 
         // /api/session/:project/:session
         if (parts[0] === "api" && parts[1] === "session" && parts.length >= 4) {

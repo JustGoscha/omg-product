@@ -556,6 +556,7 @@
     {#if ws?.issues.some((i) => i.level === "error")}
       <span class="chip bad" title={ws.issues.map((i) => `${i.file}: ${i.message}`).join("\n")}>{ws.issues.filter((i) => i.level === "error").length} errors</span>
     {/if}
+    <a class="btn small" href={href("/pulse")} title={t.pulse.hint}>{t.pulse.open}</a>
     <button class="btn small" class:on={drawer} onclick={() => ((drawer = !drawer), (selected = null))}>{t.findings} <b>{findingsCount}</b></button>
     {#if !isStatic}<span class="live" class:on={store.connected} title={store.connected ? "live" : "offline"}></span>{/if}
   </header>

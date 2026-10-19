@@ -326,6 +326,8 @@ export const ProductConfig = z.object({
       concurrency: z.number().int().min(1).max(4).default(1),
     })
     .optional(),
+  // the daily swipe deck: how many cards a person gets per day, how far one day moves a rating
+  pulse: z.object({ daily: z.number().int().min(1).optional(), k: z.number().positive().optional() }).optional(),
 });
 
 // where a date comes from: copied from Linear, set by hand (roadmap drag), or an agent's estimate

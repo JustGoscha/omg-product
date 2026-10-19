@@ -2,7 +2,8 @@ import type { LoadedSession, RequestT, ResultOp, ResultsT, Workspace } from "./t
 import type { CommentOp } from "../../../src/core/comment-ops";
 import type { AnchoredThread } from "../../../src/core/comments";
 import type { Heartbeat } from "../../../src/core/requests";
-import { applyLocalOp, isStatic, localAnswered, localResults, rememberExported, snapshotPath } from "./static";
+import { applyLocalOp, isStatic, localAnswered, localPulse, localResults, rememberExported, saveLocalPulse, snapshotPath } from "./static";
+import { addVote, type PulseDay, type Tier } from "../../../src/core/pulse";
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public conflict = false) {
@@ -65,6 +66,18 @@ export const api = {
     call<{ ok: true }>(`/api/text/${enc(scope)}`, { method: "PATCH", body: JSON.stringify(edit) }),
   editStep: (project: string, session: string, step: string, edit: { path: (string | number)[]; value: unknown; expect?: unknown }) =>
     call<{ ok: true }>(`/api/session/${enc(project)}/${enc(session)}/step/${enc(step)}`, { method: "PATCH", body: JSON.stringify(edit) }),
+  // the static demo keeps swipes in this browser, on top of the exported ones
+  pulse: async () => {
+    const d = await call<{ days: PulseDay[] }>("/api/pulse");
+    return isStatic ? { days: localPulse<PulseDay[]>() ?? d.days } : d;
+  },
+  pulseVote: async (v: { voter: string; date: string; project: string; tier: Tier | null }) => {
+    if (!isStatic) return call<{ days: PulseDay[] }>("/api/pulse", { method: "POST", body: JSON.stringify(v) });
+    const base = localPulse<PulseDay[]>() ?? (await call<{ days: PulseDay[] }>("/api/pulse")).days;
+    const days = addVote(base, v.voter, v.date, v.project, v.tier);
+    saveLocalPulse(days);
+    return { days };
+  },
   agent: () =>
     call<{ configured: string | null; heartbeat: (Heartbeat & { alive: boolean }) | null; requests: RequestT[] }>("/api/agent"),
   cancelRequest: (id: string) => call<RequestT>(`/api/requests/${enc(id)}/cancel`, { method: "POST" }),

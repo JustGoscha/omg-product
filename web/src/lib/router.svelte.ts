@@ -5,6 +5,8 @@
 //   #/p/<id>/s/<session>/summary
 //   #/p/<id>/proto/<file>      prototype viewer
 //   #/join/<id>/<session>      vote from a phone
+//   #/pulse                    today's swipe deck
+//   #/pulse/results            what everyone swiped, ranked
 
 export type Route =
   | { name: "roadmap" }
@@ -13,6 +15,7 @@ export type Route =
   | { name: "summary"; project: string; session: string }
   | { name: "proto"; project: string; file: string }
   | { name: "join"; project: string; session: string }
+  | { name: "pulse"; results: boolean }
   | { name: "notfound" };
 
 function parse(hash: string): Route {
@@ -20,6 +23,7 @@ function parse(hash: string): Route {
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
   const q = new URLSearchParams(query ?? "");
   if (!parts.length) return { name: "roadmap" };
+  if (parts[0] === "pulse") return { name: "pulse", results: parts[1] === "results" };
   if (parts[0] === "p" && parts[1]) {
     if (parts.length === 2) return { name: "project", project: parts[1] };
     if (parts[2] === "s" && parts[3]) {

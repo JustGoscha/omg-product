@@ -4,6 +4,7 @@ import { ANNOTATE_JS, PKG_ROOT, WEB_DIST } from "../core/paths.ts";
 import { loadResults, loadSession, loadWorkspace } from "../core/workspace.ts";
 import { anchorThreads, loadComments, ROOT_SCOPE } from "../core/comments.ts";
 import { withAnnotate } from "../server/server.ts";
+import { loadPulse } from "../core/pulse-files.ts";
 
 // A static, read-only copy of the studio for one workspace, for GitHub Pages or any file host:
 //
@@ -83,6 +84,7 @@ export function writeSnapshots(root: string, outDir: string): ExportSummary {
   // no agent and no requests: the studio hides everything that needs one
   write("api/agent.json", { configured: null, heartbeat: null, requests: [] });
   write("api/requests.json", []);
+  write("api/pulse.json", { days: loadPulse(root) });
 
   // workspace files (prototypes, images, brand css, handoff.md), HTML with the annotate layer
   write("__omgp/annotate.js", readFileSync(ANNOTATE_JS, "utf8"));

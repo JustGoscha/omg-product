@@ -14,6 +14,8 @@ import { linearPull } from "./linear.ts";
 import { checkPrototype, formatCheck, prototypeTargets } from "../core/proto-check.ts";
 import * as tpl from "./templates.ts";
 import { exportStatic } from "./export.ts";
+import { loadPulse, pulseProjects } from "../core/pulse-files.ts";
+import { localDate, rank } from "../core/pulse.ts";
 
 const HELP = `omgp — product harness: roadmap, prototypes and decision sessions as files
 
@@ -25,6 +27,7 @@ const HELP = `omgp — product harness: roadmap, prototypes and decision session
                                        sessions use, report script errors, blank pages and missing focus targets;
                                        --shots saves a PNG per state to .omgp/shots to look at (exit 1 on problems)
   omgp roadmap [--json]                conflicts, bottlenecks, overload, delegatable work
+  omgp pulse [--voter name] [--json]   what people swiped as most important (Elo, studio: #/pulse)
   omgp status [project]                project and session progress
   omgp new project <id> --name "…" [--initiative id] [--stage idea]
   omgp new session <project> <id> [--title "…"] [--kind kickoff]
@@ -213,6 +216,7 @@ async function main() {
   }
 
   if (cmd === "roadmap") return printRoadmap(ws, !!flags.json);
+  if (cmd === "pulse") return printPulse(root, ws, str(flags.voter), !!flags.json);
   if (cmd === "status") return printStatus(ws, pos[1]);
 
   if (cmd === "new") {
@@ -395,6 +399,20 @@ function printRoadmap(ws: Workspace, asJson: boolean) {
   section("Overloaded streams", a.overload.map((o) => `${o.stream} ${o.from}…${o.to}: load ${o.peak} > capacity ${o.capacity} (${o.projects.map(name).join(", ")})`));
   section("High priority, not scheduled", a.unscheduled.map(name));
   section("Can be handed to one person (no hard/tight links)", a.delegatable.map(name));
+}
+
+function printPulse(root: string, ws: Workspace, voter: string | undefined, asJson: boolean) {
+  const days = loadPulse(root);
+  const ranked = rank(days, pulseProjects(ws), { today: localDate(), voter, k: ws.config.pulse?.k });
+  if (asJson) return console.log(JSON.stringify({ voters: new Set(days.map((d) => d.voter)).size, days: days.length, ranked }, null, 2));
+  const people = new Set(days.map((d) => d.voter)).size;
+  console.log(c.bold(`Pulse${voter ? ` (${voter})` : ""}`) + c.dim(`  ${people} ${people === 1 ? "person" : "people"}, ${days.length} days of swipes`));
+  ranked.forEach((r, i) => {
+    const p = ws.projects.find((p) => p.id === r.id)!;
+    const delta = r.delta > 0 ? c.green(`▲${r.delta}`) : r.delta < 0 ? c.red(`▼${-r.delta}`) : c.dim("·");
+    const tally = c.dim(`↑${r.tally.top} →${r.tally.high} ↓${r.tally.low} ←${r.tally.drop}`);
+    console.log(`${String(i + 1).padStart(3)}. ${String(r.rating).padStart(4)} ${delta.padEnd(14)} ${p.name}${r.split ? c.yellow("  ⚡ split") : ""}  ${tally}`);
+  });
 }
 
 function printStatus(ws: Workspace, projectId?: string) {

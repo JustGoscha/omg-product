@@ -103,3 +103,25 @@ export function applyLocalOp(project: string, session: string, op: ResultOp): Re
   if (before?.answered !== after?.answered) for (const l of listeners) l();
   return next;
 }
+
+const pulseKey = () => `omgp:demo:${location.pathname.replace(/index\.html$/, "")}:pulse`;
+let pulseMemory: unknown = null;
+
+/** Swipes made in this browser on a static demo (with the exported ones), or null before the first. */
+export function localPulse<T>(): T | null {
+  try {
+    const raw = localStorage.getItem(pulseKey());
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return pulseMemory as T | null;
+  }
+}
+
+export function saveLocalPulse(days: unknown) {
+  pulseMemory = days;
+  try {
+    localStorage.setItem(pulseKey(), JSON.stringify(days));
+  } catch {
+    /* kept in memory */
+  }
+}
