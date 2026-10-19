@@ -64,6 +64,13 @@
   });
   const canMore = $derived(!!days && mayDuel(days, voter, today, cfg));
   const roundOver = $derived(inRound >= daily || !pair || !canMore);
+  // stopping the session: the top 3 are asked for their next tasks one by one, then the ranking
+  let stopped = $state(false);
+  let walk = $state(0);
+  $effect(() => {
+    // nothing left to compare ends the session by itself
+    if (started && days && !pair && !stopped) stopped = true;
+  });
   const a = $derived(pair ? store.project(pair[0]) : null);
   const b = $derived(pair ? store.project(pair[1]) : null);
 
@@ -178,18 +185,42 @@
       <p class="muted center">…</p>
     {:else if ids.length < 2}
       <p class="muted center">{t.pulse.nothing}</p>
+    {:else if stopped && walk < tops.length}
+      {@const { p, rank: n } = tops[walk]}
+      <div class="progress" aria-label="{walk + 1} / {tops.length}">
+        {#each tops as _, i}<span class:on={i < walk} class:cur={i === walk}></span>{/each}
+      </div>
+      <section class="ask open walk">
+        <small class="muted">{t.steps.top(n)}</small>
+        <h1>{p.name}</h1>
+        <h3>{p.next?.length ? t.steps.check : t.steps.ask}</h3>
+        <form onsubmit={(e) => (e.preventDefault(), saveSteps(p.id).then(() => walk++))}>
+          {#each [0, 1, 2] as i}
+            <input class="field" placeholder={t.steps.placeholder[i]} value={draft(p)[i]} oninput={(e) => setDraft(p, i, (e.target as HTMLInputElement).value)} />
+          {/each}
+          <div class="row">
+            <button class="btn small ghost" type="button" onclick={() => walk++}>{t.pulse.skip}</button>
+            <button class="btn primary" type="submit">{walk + 1 < tops.length ? t.steps.saveNext : t.steps.save}</button>
+          </div>
+        </form>
+      </section>
+    {:else if stopped}
+      <section class="done">
+        <h1>{t.steps.thanks}</h1>
+        <p class="muted">{!pair ? t.pulse.allDone : t.steps.thanksBody}</p>
+      </section>
+      {@render ranking(Infinity)}
     {:else if roundOver}
       <section class="done">
-        <h1>{pair ? t.pulse.roundDone : "🎉"}</h1>
-        <p class="muted">{!pair ? t.pulse.allDone : canMore ? t.pulse.roundBody : t.pulse.limitBody}</p>
+        <h1>{t.pulse.roundDone}</h1>
+        <p class="muted">{canMore ? t.pulse.roundBody : t.pulse.limitBody}</p>
         <div class="row">
           {#if history.length}<button class="btn small ghost" onclick={undo}>↶ {t.pulse.undo}</button>{/if}
-          {#if pair && canMore}<button class="btn primary" onclick={more}>{t.pulse.more(daily)}</button>{/if}
+          <button class="btn" class:primary={!canMore} onclick={() => (stopped = true)}>{t.steps.stop}</button>
+          {#if canMore}<button class="btn primary" onclick={more}>{t.pulse.more(daily)}</button>{/if}
         </div>
       </section>
-      {@render nextSteps()}
       {@render ranking(5)}
-      <p class="center"><a href={href("/pulse/results")}>{t.pulse.results} →</a></p>
     {:else if a && b && pair}
       <div class="progress" aria-label={t.pulse.round(inRound + 1, daily)}>
         {#each Array(daily) as _, i}<span class:on={i < inRound} class:cur={i === inRound}></span>{/each}
@@ -251,7 +282,7 @@
         {@const missing = (p.next?.length ?? 0) < 3}
         {@const open = missing || editing.has(p.id)}
         <div class="ask" class:open>
-          <h3>{missing ? t.steps.ask(p.name, n) : t.steps.check(p.name, n)}</h3>
+          <h3><small class="muted">{t.steps.top(n)}</small> {p.name}: {missing ? t.steps.ask : t.steps.check}</h3>
           {#if open}
             <form onsubmit={(e) => (e.preventDefault(), saveSteps(p.id))}>
               {#each [0, 1, 2] as i}
@@ -526,6 +557,19 @@
   }
   .ask .row {
     justify-content: flex-end;
+  }
+  .ask form {
+    display: grid;
+    gap: 0.5rem;
+  }
+  .walk {
+    max-width: 34rem;
+    width: 100%;
+    margin: 4vh auto 0;
+    padding: 1.4rem;
+  }
+  .walk h1 {
+    font-size: clamp(1.5rem, 1rem + 2vw, 2.2rem);
   }
   .summary {
     font-size: 1.05rem;
