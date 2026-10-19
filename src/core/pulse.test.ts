@@ -2,69 +2,85 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addVote, deck, elo, rank, START, type PulseDay } from "./pulse.ts";
-import { loadPulse, savePulseVote } from "./pulse-files.ts";
+import { addDuel, elo, mayDuel, nextPair, rank, START, type Duel, type PulseDay } from "./pulse.ts";
+import { loadPulse, savePulseDuel } from "./pulse-files.ts";
 
 const ids = ["a", "b", "c", "d"];
-const day = (voter: string, date: string, votes: PulseDay["votes"]): PulseDay => ({ voter, date, votes });
+const day = (voter: string, date: string, duels: [string, string][]): PulseDay => ({ voter, date, duels: duels.map(([win, over]) => ({ win, over })) });
 
 describe("pulse", () => {
-  test("a higher tier beats a lower one, the same tier is a draw", () => {
-    const r = elo([day("Anna", "2026-10-01", { a: "top", b: "high", c: "high", d: "drop" })], ids);
-    expect(r.get("a")!).toBeGreaterThan(r.get("b")!);
-    expect(r.get("b")).toBe(r.get("c"));
-    expect(r.get("d")!).toBeLessThan(START);
-    // zero-sum
-    expect([...r.values()].reduce((x, y) => x + y, 0)).toBeCloseTo(START * 4);
+  test("a duel is an Elo match", () => {
+    const r = elo([day("Anna", "2026-10-01", [["a", "b"]])], ids);
+    expect(r.get("a")).toBe(START + 16);
+    expect(r.get("b")).toBe(START - 16);
+    expect(r.get("c")).toBe(START);
   });
 
-  test("one day moves a project by at most about K, however many cards it had", () => {
-    const r = elo([day("Anna", "2026-10-01", { a: "top", b: "drop", c: "drop", d: "drop" })], ids);
-    expect(r.get("a")! - START).toBeLessThanOrEqual(16.01);
+  test("beating the top from the bottom is a big jump, beating the bottom is a small one", () => {
+    // a wins everything, d loses everything: top and bottom of the barrel
+    const climb = Array.from({ length: 40 }, (_, i): [string, string] => (i % 2 ? ["a", "c"] : ["b", "d"]));
+    const base = day("Anna", "2026-10-01", climb);
+    const before = elo([base], ids);
+    const upset = elo([base, day("Ben", "2026-10-02", [["d", "a"]])], ids);
+    const expected = elo([base, day("Ben", "2026-10-02", [["a", "d"]])], ids);
+    const jump = upset.get("d")! - before.get("d")!;
+    const step = expected.get("a")! - before.get("a")!;
+    expect(jump).toBeGreaterThan(20);
+    expect(jump).toBeGreaterThan(step * 3);
   });
 
   test("recent days count more than old ones", () => {
-    const old = Array.from({ length: 5 }, (_, i) => day("Anna", `2026-09-0${i + 1}`, { a: "top", b: "drop" }));
-    const now = Array.from({ length: 5 }, (_, i) => day("Anna", `2026-10-0${i + 1}`, { a: "drop", b: "top" }));
+    const old = Array.from({ length: 5 }, (_, i) => day("Anna", `2026-09-0${i + 1}`, [["a", "b"]]));
+    const now = Array.from({ length: 5 }, (_, i) => day("Anna", `2026-10-0${i + 1}`, [["b", "a"]]));
     const r = elo([...now, ...old], ["a", "b"]);
     expect(r.get("b")!).toBeGreaterThan(r.get("a")!);
   });
 
-  test("ranking: tally, trend, split, just me", () => {
+  test("ranking: wins, trend, split, just me", () => {
     const days = [
-      day("Anna", "2026-10-01", { a: "top", b: "drop" }),
-      day("Ben", "2026-10-18", { a: "drop", b: "top", c: "high" }),
-      day("Cleo", "2026-10-18", { a: "top", c: "low" }),
+      day("Anna", "2026-10-01", [["a", "b"], ["a", "c"]]),
+      day("Ben", "2026-10-18", [["b", "a"], ["c", "a"]]),
+      day("Cleo", "2026-10-18", [["a", "b"], ["a", "c"]]),
     ];
     const r = rank(days, ids, { today: "2026-10-19" });
     const a = r.find((x) => x.id === "a")!;
-    expect(a.tally).toEqual({ top: 2, high: 0, low: 0, drop: 1 });
+    expect([a.wins, a.losses]).toEqual([4, 2]);
     expect(a.split).toBe(true);
-    expect(r.find((x) => x.id === "d")!.votes).toBe(0);
-    // Anna voted more than a week ago, the others this week
-    expect(r.find((x) => x.id === "b")!.delta).toBeGreaterThan(0);
-    expect(rank(days, ids, { today: "2026-10-19", voter: "anna" })[0].id).toBe("a");
+    expect(r.find((x) => x.id === "d")!.wins + r.find((x) => x.id === "d")!.losses).toBe(0);
+    expect(r.find((x) => x.id === "d")!.delta).toBe(0);
+    expect(rank(days, ids, { today: "2026-10-19", voter: "ben" })[0].id).not.toBe("a");
   });
 
-  test("the daily deck: everything never rated first, then the least rated, done when the day is full", () => {
-    // the first deck has every project, however small the daily limit
-    expect(deck([], ids, "Anna", "2026-10-18", 2).cards).toHaveLength(4);
-    const days = [day("Anna", "2026-10-18", { a: "top", b: "high", c: "low", d: "drop" })];
-    expect(deck(days, ids, "Anna", "2026-10-19", 2).cards).toHaveLength(2);
-    const after = addVote(addVote(days, "Anna", "2026-10-19", "c", "low"), "Anna", "2026-10-19", "d", "top");
-    expect(deck(after, ids, "anna", "2026-10-19", 2)).toEqual({ cards: [], done: ["c", "d"] });
-    // a new project comes up even when the day is full
-    expect(deck(after, [...ids, "e"], "anna", "2026-10-19", 2).cards).toEqual(["e"]);
-    // the same deck all day
-    expect(deck(days, ids, "Ben", "2026-10-19", 3)).toEqual(deck(days, ids, "Ben", "2026-10-19", 3));
+  test("next pair: the least compared first, no pair twice, stable within the day", () => {
+    const days = [day("Anna", "2026-10-19", [["a", "b"]])];
+    const p = nextPair(days, ids, "Anna", "2026-10-19")!;
+    expect(p.some((x) => x === "c" || x === "d")).toBe(true);
+    expect(nextPair(days, ids, "anna", "2026-10-19")).toEqual(p);
+    // all pairs decided: nothing left
+    const all: [string, string][] = [["a", "b"], ["a", "c"], ["a", "d"], ["b", "c"], ["b", "d"], ["c", "d"]];
+    expect(nextPair([day("Anna", "2026-10-19", all)], ids, "Anna", "2026-10-19")).toBeNull();
+    expect(nextPair([], ["a"], "Anna", "2026-10-19")).toBeNull();
+  });
+
+  test("keep going is on unless the workspace turns it off", () => {
+    const days = [day("Anna", "2026-10-19", [["a", "b"], ["c", "d"]])];
+    expect(mayDuel(days, "Anna", "2026-10-19", { daily: 2 })).toBe(true);
+    expect(mayDuel(days, "Anna", "2026-10-19", { daily: 2, more: false })).toBe(false);
+    expect(mayDuel(days, "Ben", "2026-10-19", { daily: 2, more: false })).toBe(true);
+  });
+
+  test("undo takes back the last call on that pair", () => {
+    const d: Duel = { win: "a", over: "b" };
+    const days = addDuel(addDuel([], "Anna", "2026-10-19", d), "Anna", "2026-10-19", { win: "c", over: "d" });
+    expect(addDuel(days, "Anna", "2026-10-19", { win: "b", over: "a" }, true)[0].duels).toEqual([{ win: "c", over: "d" }]);
   });
 
   test("one yaml file per person and day", () => {
     const root = mkdtempSync(join(tmpdir(), "omgp-pulse-"));
-    savePulseVote(root, "Anna Ö", "2026-10-19", "a", "top");
-    savePulseVote(root, "Anna Ö", "2026-10-19", "b", "low");
-    savePulseVote(root, "Anna Ö", "2026-10-19", "a", null);
-    expect(readFileSync(join(root, "pulse/2026-10-19/anna-o.yaml"), "utf8")).toContain("b: low");
-    expect(loadPulse(root)).toEqual([{ voter: "Anna Ö", date: "2026-10-19", votes: { b: "low" } }]);
+    savePulseDuel(root, "Anna Ö", "2026-10-19", { win: "a", over: "b" });
+    savePulseDuel(root, "Anna Ö", "2026-10-19", { win: "c", over: "a" });
+    savePulseDuel(root, "Anna Ö", "2026-10-19", { win: "a", over: "b" }, true);
+    expect(readFileSync(join(root, "pulse/2026-10-19/anna-o.yaml"), "utf8")).toContain("win: c");
+    expect(loadPulse(root)).toEqual([{ voter: "Anna Ö", date: "2026-10-19", duels: [{ win: "c", over: "a" }] }]);
   });
 });

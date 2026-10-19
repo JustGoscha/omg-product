@@ -3,7 +3,7 @@ import type { CommentOp } from "../../../src/core/comment-ops";
 import type { AnchoredThread } from "../../../src/core/comments";
 import type { Heartbeat } from "../../../src/core/requests";
 import { applyLocalOp, isStatic, localAnswered, localPulse, localResults, rememberExported, saveLocalPulse, snapshotPath } from "./static";
-import { addVote, type PulseDay, type Tier } from "../../../src/core/pulse";
+import { addDuel, type PulseDay } from "../../../src/core/pulse";
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public conflict = false) {
@@ -71,10 +71,10 @@ export const api = {
     const d = await call<{ days: PulseDay[] }>("/api/pulse");
     return isStatic ? { days: localPulse<PulseDay[]>() ?? d.days } : d;
   },
-  pulseVote: async (v: { voter: string; date: string; project: string; tier: Tier | null }) => {
+  pulseDuel: async (v: { voter: string; date: string; win: string; over: string; undo?: boolean }) => {
     if (!isStatic) return call<{ days: PulseDay[] }>("/api/pulse", { method: "POST", body: JSON.stringify(v) });
     const base = localPulse<PulseDay[]>() ?? (await call<{ days: PulseDay[] }>("/api/pulse")).days;
-    const days = addVote(base, v.voter, v.date, v.project, v.tier);
+    const days = addDuel(base, v.voter, v.date, { win: v.win, over: v.over }, v.undo);
     saveLocalPulse(days);
     return { days };
   },

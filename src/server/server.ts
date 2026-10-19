@@ -12,7 +12,9 @@ import type { RequestT } from "../core/schema.ts";
 import { anchorThreads, EditConflict, loadComments, replaceBody, replaceSection, ROOT_SCOPE, scopeDir, updateComments } from "../core/comments.ts";
 import { patchStep } from "../core/session-edit.ts";
 import type { CommentOp } from "../core/comment-ops.ts";
-import { loadPulse, savePulseVote } from "../core/pulse-files.ts";
+import { loadPulse, savePulseDuel } from "../core/pulse-files.ts";
+import { localDate, mayDuel } from "../core/pulse.ts";
+import { timingSafeEqual } from "node:crypto";
 
 const annotateJs = () => readFileSync(ANNOTATE_JS, "utf8");
 const webDist = WEB_DIST;
@@ -57,10 +59,30 @@ export interface ServeOptions {
   root: string;
   port: number;
   host: string;
+  /** hosted for a team: everything read-only except pulse duels, no agent */
+  hosted?: boolean;
+  /** only people who opened /k/<key> get in (a cookie remembers it) */
+  key?: string;
+  /** where pulse/ is written, when not into the workspace (a volume in a container) */
+  data?: string;
 }
 
-export function serve({ root, port, host }: ServeOptions) {
+const KEY_COOKIE = "omgp_key";
+const sameKey = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const cookie = (req: Request, name: string) =>
+  req.headers
+    .get("cookie")
+    ?.split(";")
+    .map((c) => c.trim().split("="))
+    .find(([k]) => k === name)?.[1];
+
+const LOCKED = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>omg·product</title><body style="font:1.1rem system-ui;display:grid;place-items:center;min-height:90vh;margin:0 1rem;text-align:center;color:#1b2430;background:#f2f4f3">
+<p>This studio is private.<br>Open the link you were sent.</p></body>`;
+
+export function serve({ root, port, host, hosted = false, key, data }: ServeOptions) {
   root = resolve(root);
+  const pulseRoot = data ? resolve(data) : root;
   let cache: Workspace | null = null;
   const workspace = () => (cache ??= loadWorkspace(root));
 
@@ -96,7 +118,8 @@ export function serve({ root, port, host }: ServeOptions) {
   // --- agent: build live requests in this process unless `omgp work` runs elsewhere
   let runner: Runner | null = null;
   const agentCfg = workspace().config.agent;
-  if (agentCfg && (agentCfg.preset || agentCfg.command)) {
+  if (hosted) console.log("hosted: read-only studio, pulse duels only, no agent");
+  else if (agentCfg && (agentCfg.preset || agentCfg.command)) {
     const hb = readHeartbeat(root);
     if (hb?.alive && hb.mode === "worker") console.log(`agent: \`omgp work\` is already running (pid ${hb.pid}), the studio leaves requests to it`);
     else {
@@ -118,6 +141,21 @@ export function serve({ root, port, host }: ServeOptions) {
       const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
 
       try {
+        // the shareable link: /k/<key> sets the cookie and opens the pulse
+        if (key && parts[0] === "k") {
+          if (!parts[1] || !sameKey(parts[1], key)) return new Response(LOCKED, { status: 403, headers: { "content-type": mime[".html"] } });
+          const secure = url.protocol === "https:" || req.headers.get("x-forwarded-proto") === "https" ? "; Secure" : "";
+          return new Response(null, {
+            status: 302,
+            headers: { location: "/#/pulse", "set-cookie": `${KEY_COOKIE}=${key}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${secure}` },
+          });
+        }
+        if (key && !sameKey(cookie(req, KEY_COOKIE) ?? "", key)) {
+          if (parts[0] === "api" || parts[0] === "files" || parts[0] === "__omgp") return json({ error: "open the link you were sent" }, 401);
+          if (!extname(path)) return new Response(LOCKED, { status: 401, headers: { "content-type": mime[".html"] } });
+        }
+        if (hosted && req.method !== "GET" && path !== "/api/pulse") return json({ error: "read-only: this studio is hosted for the pulse" }, 403);
+
         if (path === "/api/events") {
           let ctl: ReadableStreamDefaultController<string>;
           let beat: ReturnType<typeof setInterval>;
@@ -146,15 +184,20 @@ export function serve({ root, port, host }: ServeOptions) {
 
         if (path === "/api/workspace") return json(workspace());
 
-        // pulse: GET every day's votes, POST one swipe { voter, date, project, tier|null }
+        // pulse: GET every day's duels, POST one { voter, date, win, over, undo? }
         if (path === "/api/pulse") {
           if (req.method === "POST") {
-            const { voter, date, project, tier } = (await req.json()) as { voter: string; date: string; project: string; tier: string | null };
-            if (!voter?.trim()) return json({ error: "who votes?" }, 400);
-            if (!workspace().projects.some((p) => p.id === project)) return json({ error: "project not found" }, 404);
-            savePulseVote(root, voter.trim(), date, project, tier as never);
+            const { voter, date, win, over, undo } = (await req.json()) as { voter: string; date: string; win: string; over: string; undo?: boolean };
+            const ws = workspace();
+            if (!voter?.trim()) return json({ error: "who decides?" }, 400);
+            if (![win, over].every((id) => ws.projects.some((p) => p.id === id))) return json({ error: "project not found" }, 404);
+            // hosted, the date can't be picked freely: the voter's today is at most a day off ours
+            if (hosted && ![-1, 0, 1].some((n) => date === localDate(new Date(Date.now() + n * 864e5)))) return json({ error: "wrong date" }, 400);
+            if (!undo && !mayDuel(loadPulse(pulseRoot), voter, date, ws.config.pulse)) return json({ error: "that's all for today" }, 429);
+            savePulseDuel(pulseRoot, voter.trim(), date, { win, over }, !!undo);
+            if (pulseRoot !== root) send({ type: "change", paths: [`pulse/${date}`] });
           }
-          return json({ days: loadPulse(root) });
+          return json({ days: loadPulse(pulseRoot) });
         }
 
         // /api/session/:project/:session

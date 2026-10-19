@@ -21,6 +21,9 @@ const HELP = `omgp — product harness: roadmap, prototypes and decision session
 
   omgp init [dir] [--name "Product"]   scaffold a workspace
   omgp serve [--port 4747] [--host 0.0.0.0]   studio with live reload
+             [--hosted] [--key k] [--data dir]
+                                       for a team: read-only but the pulse, only via the link /k/<key>,
+                                       duels written to <dir>/pulse (env OMGP_HOSTED, OMGP_KEY, OMGP_DATA, PORT)
   omgp validate [--json]               check files and references (exit 1 on errors)
   omgp check <project> [prototype] [--shots] [--state a,b]
                                        open the project's prototypes in headless Chrome, visit every #state its
@@ -158,7 +161,16 @@ async function main() {
 
   if (cmd === "serve") {
     const { serve } = await import("../server/server.ts");
-    serve({ root, port: Number(str(flags.port) ?? process.env.OMGP_PORT ?? 4747), host: str(flags.host) ?? "127.0.0.1" });
+    const env = process.env;
+    const hosted = !!flags.hosted || !!env.OMGP_HOSTED;
+    serve({
+      root,
+      port: Number(str(flags.port) ?? env.OMGP_PORT ?? env.PORT ?? 4747),
+      host: str(flags.host) ?? (hosted ? "0.0.0.0" : "127.0.0.1"),
+      hosted,
+      key: str(flags.key) ?? env.OMGP_KEY ?? undefined,
+      data: str(flags.data) ?? env.OMGP_DATA ?? undefined,
+    });
     return;
   }
 
@@ -404,14 +416,14 @@ function printRoadmap(ws: Workspace, asJson: boolean) {
 function printPulse(root: string, ws: Workspace, voter: string | undefined, asJson: boolean) {
   const days = loadPulse(root);
   const ranked = rank(days, pulseProjects(ws), { today: localDate(), voter, k: ws.config.pulse?.k });
-  if (asJson) return console.log(JSON.stringify({ voters: new Set(days.map((d) => d.voter)).size, days: days.length, ranked }, null, 2));
   const people = new Set(days.map((d) => d.voter)).size;
-  console.log(c.bold(`Pulse${voter ? ` (${voter})` : ""}`) + c.dim(`  ${people} ${people === 1 ? "person" : "people"}, ${days.length} days of swipes`));
+  const duels = days.reduce((n, d) => n + d.duels.length, 0);
+  if (asJson) return console.log(JSON.stringify({ people, duels, ranked }, null, 2));
+  console.log(c.bold(`Pulse${voter ? ` (${voter})` : ""}`) + c.dim(`  ${people} ${people === 1 ? "person" : "people"}, ${duels} duels`));
   ranked.forEach((r, i) => {
     const p = ws.projects.find((p) => p.id === r.id)!;
-    const delta = r.delta > 0 ? c.green(`▲${r.delta}`) : r.delta < 0 ? c.red(`▼${-r.delta}`) : c.dim("·");
-    const tally = c.dim(`↑${r.tally.top} →${r.tally.high} ↓${r.tally.low} ←${r.tally.drop}`);
-    console.log(`${String(i + 1).padStart(3)}. ${String(r.rating).padStart(4)} ${delta.padEnd(14)} ${p.name}${r.split ? c.yellow("  ⚡ split") : ""}  ${tally}`);
+    const delta = r.delta > 0 ? c.green(`▲${r.delta}`.padEnd(5)) : r.delta < 0 ? c.red(`▼${-r.delta}`.padEnd(5)) : c.dim("·".padEnd(5));
+    console.log(`${String(i + 1).padStart(3)}. ${String(r.rating).padStart(4)} ${delta} ${p.name}${r.split ? c.yellow("  ⚡ split") : ""}  ${c.dim(`${r.wins}–${r.losses}`)}`);
   });
 }
 

@@ -1,12 +1,13 @@
 <script lang="ts">
-  // Pulse: a short swipe deck a day, and the Elo ranking of what everyone swiped.
-  // Phone first: people open #/pulse with their coffee, swipe ten cards, see the ranking.
+  // Pulse: "what is more important?", two projects at a time, in rounds of a few duels.
+  // Phone first: people open #/pulse with their coffee, decide five duels, see the ranking.
   import { store } from "../lib/store.svelte";
   import { href, router } from "../lib/router.svelte";
   import { api } from "../lib/api";
   import { md } from "../lib/md";
   import { stageColor, stageSoft } from "../lib/stages";
-  import { deck, localDate, rank, DAILY, OUT_OF_PULSE, type PulseDay, type Tier } from "../../../src/core/pulse";
+  import { localDate, mayDuel, nextPair, rank, DAILY, OUT_OF_PULSE, type PulseDay } from "../../../src/core/pulse";
+  import type { ProjectInfo } from "../lib/types";
 
   let { results }: { results: boolean } = $props();
 
@@ -17,6 +18,20 @@
   let error = $state<string | null>(null);
   let name = $state("");
   let who = $state<"everyone" | "me">("everyone");
+
+  // anonymous workspaces vote with a random id per device instead of a name
+  const anonymous = $derived(!!ws?.config.pulse?.anonymous);
+  function deviceId() {
+    const k = "omgp:pulse-device";
+    try {
+      const id = localStorage.getItem(k) ?? `anon-${crypto.randomUUID().slice(0, 8)}`;
+      localStorage.setItem(k, id);
+      return id;
+    } catch {
+      return `anon-${crypto.randomUUID().slice(0, 8)}`;
+    }
+  }
+  const voter = $derived(anonymous ? deviceId() : store.author);
 
   async function load() {
     try {
@@ -29,111 +44,85 @@
   $effect(() => store.on((e) => (e.type === "change" && e.paths?.some((p) => p.startsWith("pulse/")) ? load() : undefined)));
 
   const ids = $derived(ws?.projects.filter((p) => !OUT_OF_PULSE.has(p.stage ?? "idea")).map((p) => p.id) ?? []);
-  const daily = $derived(ws?.config.pulse?.daily ?? DAILY);
-  const today$ = $derived(days && store.author ? deck(days, ids, store.author, today, daily) : null);
-  // the deck is fixed when it opens, so a card doesn't change under the finger after a vote
-  let cards = $state<string[] | null>(null);
+  const cfg = $derived(ws?.config.pulse ?? {});
+  const daily = $derived(cfg.daily ?? DAILY);
+
+  // ---- the round: `pair` stays put while it animates; the next one is drawn after
+  let pair = $state<[string, string] | null>(null);
+  let skipped = $state<string[]>([]);
+  let inRound = $state(0);
+  let started = $state(false);
+  let picked = $state<string | null>(null);
+  let history = $state<{ win: string; over: string }[]>([]);
+  const draw = () => (pair = days && voter ? nextPair(days, ids, voter, today, skipped) : null);
   $effect(() => {
-    if (today$ && cards === null) cards = today$.cards;
+    if (!started && days && ws && voter) {
+      started = true;
+      draw();
+    }
   });
-  let pos = $state(0);
-  let history = $state<string[]>([]);
-  const current = $derived(cards?.[pos] ? store.project(cards[pos]) : null);
-  const upNext = $derived(cards?.[pos + 1] ? store.project(cards[pos + 1]) : null);
-  const finished = $derived(!!cards && pos >= cards.length);
+  const canMore = $derived(!!days && mayDuel(days, voter, today, cfg));
+  const roundOver = $derived(inRound >= daily || !pair || !canMore);
+  const a = $derived(pair ? store.project(pair[0]) : null);
+  const b = $derived(pair ? store.project(pair[1]) : null);
 
-  const ranked = $derived(days && ws ? rank(days, ids, { today, voter: who === "me" ? store.author : undefined, k: ws.config.pulse?.k }) : []);
-  const people = $derived(new Set((days ?? []).map((d) => d.voter.toLowerCase())).size);
-  const anyVotes = $derived(ranked.some((r) => r.votes > 0));
-
-  // ---- swiping (same gestures as the triage deck)
-  const dirs: { tier: Tier; key: string; arrow: string; x: number; y: number }[] = [
-    { tier: "top", key: "ArrowUp", arrow: "↑", x: 0, y: -1 },
-    { tier: "high", key: "ArrowRight", arrow: "→", x: 1, y: 0 },
-    { tier: "low", key: "ArrowDown", arrow: "↓", x: 0, y: 1 },
-    { tier: "drop", key: "ArrowLeft", arrow: "←", x: -1, y: 0 },
-  ];
-  let dx = $state(0);
-  let dy = $state(0);
-  let dragging = $state(false);
-  let flying = $state<Tier | null>(null);
-  let start: { x: number; y: number } | null = null;
-
-  const leaning = $derived.by((): Tier | null => {
-    if (flying) return flying;
-    const ax = Math.abs(dx), ay = Math.abs(dy);
-    if (Math.max(ax, ay) < 40) return null;
-    if (ax > ay) return dx > 0 ? "high" : "drop";
-    return dy < 0 ? "top" : "low";
-  });
-
-  function decide(tier: Tier) {
-    if (!current || flying) return;
-    const d = dirs.find((d) => d.tier === tier)!;
-    const project = current.id;
-    flying = tier;
-    dx = d.x * 900;
-    dy = d.y * 700;
-    api
-      .pulseVote({ voter: store.author, date: today, project, tier })
-      .then((r) => (days = r.days))
-      .catch((e) => (error = (e as Error).message));
-    setTimeout(() => {
-      history = [...history, project];
-      pos++;
-      flying = null;
-      dx = dy = 0;
-    }, 320);
+  function choose(win: string) {
+    if (!pair || picked) return;
+    const over = pair[0] === win ? pair[1] : pair[0];
+    picked = win;
+    const saved = api.pulseDuel({ voter, date: today, win, over });
+    setTimeout(async () => {
+      try {
+        days = (await saved).days;
+      } catch (e) {
+        error = (e as Error).message;
+      }
+      history = [...history, { win, over }];
+      inRound++;
+      picked = null;
+      draw();
+    }, 260);
   }
-
-  function undo() {
-    const project = history.at(-1);
-    if (!project) return;
+  function skip() {
+    if (!pair || picked) return;
+    skipped = [...skipped, [...pair].sort().join("|")];
+    draw();
+  }
+  async function undo() {
+    const last = history.at(-1);
+    if (!last) return;
     history = history.slice(0, -1);
-    pos = Math.max(0, pos - 1);
-    api.pulseVote({ voter: store.author, date: today, project, tier: null }).then((r) => (days = r.days));
+    inRound = Math.max(0, inRound - 1);
+    days = (await api.pulseDuel({ voter, date: today, ...last, undo: true })).days;
+    pair = Math.random() < 0.5 ? [last.win, last.over] : [last.over, last.win];
   }
-
-  function down(e: PointerEvent) {
-    start = { x: e.clientX, y: e.clientY };
-    dragging = true;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  }
-  function move(e: PointerEvent) {
-    if (!start) return;
-    dx = e.clientX - start.x;
-    dy = e.clientY - start.y;
-  }
-  function up() {
-    if (!start) return;
-    start = null;
-    dragging = false;
-    const v = leaning;
-    if (v && Math.max(Math.abs(dx), Math.abs(dy)) > 110) decide(v);
-    else dx = dy = 0;
+  function more() {
+    inRound = 0;
+    draw();
   }
 
   $effect(() => {
     if (results) return;
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).closest("input, textarea, [contenteditable]")) return;
-      const d = dirs.find((d) => d.key === e.key);
-      if (d && !e.metaKey && !e.altKey) {
+      if ((e.target as HTMLElement).closest("input, textarea, [contenteditable]") || !pair || roundOver) return;
+      if (e.key === "z" && (e.metaKey || e.ctrlKey)) return (e.preventDefault(), undo());
+      if (e.metaKey || e.altKey || e.ctrlKey) return;
+      const k = ({ ArrowLeft: 0, ArrowUp: 0, ArrowRight: 1, ArrowDown: 1 } as Record<string, number>)[e.key];
+      if (k !== undefined) {
         e.preventDefault();
-        decide(d.tier);
-      } else if (e.key === "z" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        undo();
-      }
+        choose(pair[k]);
+      } else if (e.key === "s") skip();
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
   });
 
-  const excerpt = (p: NonNullable<typeof current>) => p.summary ?? Object.values(p.sections)[0] ?? "";
-  const initiativeNames = (p: NonNullable<typeof current>) =>
-    p.initiatives.map((i) => ws?.initiatives.find((x) => x.id === i)?.name ?? i);
-  const pct = (n: number, total: number) => (total ? (n / total) * 100 : 0);
+  const section = (p: ProjectInfo, name: string) => Object.entries(p.sections).find(([k]) => k.startsWith(name))?.[1]?.trim();
+  const initiativeNames = (p: ProjectInfo) => p.initiatives.map((i) => ws?.initiatives.find((x) => x.id === i)?.name ?? i);
+
+  const ranked = $derived(days && ws ? rank(days, ids, { today, voter: who === "me" ? voter : undefined, k: cfg.k }) : []);
+  const people = $derived(new Set((days ?? []).map((d) => d.voter.toLowerCase())).size);
+  const anyDuels = $derived(ranked.some((r) => r.wins + r.losses > 0));
 </script>
 
 <div class="pulse">
@@ -148,7 +137,7 @@
 
   {#if error}<p class="err">{error}</p>{/if}
 
-  {#if !store.author}
+  {#if ws && !anonymous && !store.author}
     <form class="who" onsubmit={(e) => (e.preventDefault(), name.trim() && store.setAuthor(name.trim()))}>
       <h1>{t.pulse.who}</h1>
       <p class="muted">{t.pulse.hint}</p>
@@ -156,65 +145,39 @@
       <button class="btn primary" type="submit">OK</button>
     </form>
   {:else if !results}
-    {#if !ws || !cards}
+    {#if !ws || !days}
       <p class="muted center">…</p>
-    {:else if !ids.length}
+    {:else if ids.length < 2}
       <p class="muted center">{t.pulse.nothing}</p>
-    {:else if finished}
+    {:else if roundOver}
       <section class="done">
-        <h1>{t.pulse.doneTitle}</h1>
-        <p class="muted">{t.pulse.doneBody}</p>
-        <p class="muted small">{t.pulse.inPulse(ids.length, (ws?.projects.length ?? 0) - ids.length)}</p>
-        {#if history.length}<button class="btn small ghost" onclick={undo}>↶ {t.pulse.undo}</button>{/if}
+        <h1>{pair ? t.pulse.roundDone : "🎉"}</h1>
+        <p class="muted">{!pair ? t.pulse.allDone : canMore ? t.pulse.roundBody : t.pulse.limitBody}</p>
+        <div class="row">
+          {#if history.length}<button class="btn small ghost" onclick={undo}>↶ {t.pulse.undo}</button>{/if}
+          {#if pair && canMore}<button class="btn primary" onclick={more}>{t.pulse.more(daily)}</button>{/if}
+        </div>
       </section>
       {@render ranking(5)}
       <p class="center"><a href={href("/pulse/results")}>{t.pulse.results} →</a></p>
-    {:else if current}
-      <div class="progress" aria-label={t.pulse.left(cards.length - pos)}>
-        {#each cards as _, i}<span class:on={i < pos} class:cur={i === pos}></span>{/each}
+    {:else if a && b && pair}
+      <div class="progress" aria-label={t.pulse.round(inRound + 1, daily)}>
+        {#each Array(daily) as _, i}<span class:on={i < inRound} class:cur={i === inRound}></span>{/each}
       </div>
-      <div class="deck">
-        {#each dirs as d}
-          <div class="target t-{d.tier}" class:lit={leaning === d.tier}>{d.arrow} {t.pulse.tiers[d.tier][0]}</div>
-        {/each}
-        {#if upNext}
-          <div class="card behind" aria-hidden="true"><h2>{upNext.name}</h2></div>
-        {/if}
-        {#key current.id}
-          <div
-            class="card v-{leaning ?? 'none'}"
-            class:dragging
-            class:flying={!!flying}
-            style="transform: translate({dx}px, {dy}px) rotate({dx / 22}deg)"
-            onpointerdown={down}
-            onpointermove={move}
-            onpointerup={up}
-            onpointercancel={up}
-            role="group"
-            aria-label={current.name}
-          >
-            <div class="meta">
-              <span class="stage" style="color:{stageColor(current.stage)};background:{stageSoft(current.stage)}">{t.rm.stages[current.stage] ?? current.stage}</span>
-              {#each initiativeNames(current) as n}<span class="ini">{n}</span>{/each}
-            </div>
-            <h2>{current.name}</h2>
-            {#if excerpt(current)}<div class="body md">{@html md(excerpt(current))}</div>{/if}
-          </div>
-        {/key}
-      </div>
-      <div class="buttons">
-        {#each dirs as d}
-          <button class="verdict b-{d.tier}" onclick={() => decide(d.tier)}>
-            <span class="arrow">{d.arrow}</span>
-            <span class="lbl">{t.pulse.tiers[d.tier][0]}</span>
-            <span class="hint">{t.pulse.tiers[d.tier][1]}</span>
-          </button>
-        {/each}
-      </div>
+      <h1 class="q">{t.pulse.question}</h1>
+      {#key pair.join("|")}
+        <div class="duel">
+          {@render card(a, "←")}
+          <div class="vs" aria-hidden="true">{t.pulse.vs}</div>
+          {@render card(b, "→")}
+        </div>
+      {/key}
       <div class="foot">
-        <span class="muted">{t.pulse.left(cards.length - pos)} · {t.pulse.inPulse(ids.length, (ws?.projects.length ?? 0) - ids.length)}</span>
-        {#if history.length}<button class="btn small ghost" onclick={undo}>↶ {t.pulse.undo}</button>{/if}
+        {#if history.length}<button class="btn small ghost" onclick={undo}>↶ {t.pulse.undo}</button>{:else}<span></span>{/if}
+        <span class="muted small">{t.pulse.pick}{anonymous ? ` · ${t.pulse.anonymous}` : ""}</span>
+        <button class="btn small ghost" onclick={skip} title={t.pulse.skipHint}>{t.pulse.skip} ⤼</button>
       </div>
+      <p class="muted small center">{t.pulse.inPulse(ids.length, ws.projects.length - ids.length)}</p>
     {/if}
   {:else}
     <section class="head">
@@ -222,35 +185,46 @@
         <button class:on={who === "everyone"} onclick={() => (who = "everyone")}>{t.pulse.everyone} <small>{t.pulse.people(people)}</small></button>
         <button class:on={who === "me"} onclick={() => (who = "me")}>{t.pulse.justMe}</button>
       </div>
-      <span class="legend">
-        {#each dirs as d}<span class="sw sw-{d.tier}"></span>{t.pulse.tiers[d.tier][0]} {/each}
-      </span>
     </section>
     {@render ranking(Infinity)}
   {/if}
 </div>
 
+{#snippet card(p: ProjectInfo, key: string)}
+  {@const problem = section(p, "problem")}
+  {@const solution = section(p, "solution")}
+  <button class="card" class:win={picked === p.id} class:lose={!!picked && picked !== p.id} onclick={() => choose(p.id)}>
+    <span class="meta">
+      <span class="stage" style="color:{stageColor(p.stage)};background:{stageSoft(p.stage)}">{t.rm.stages[p.stage] ?? p.stage}</span>
+      {#each initiativeNames(p) as n}<span class="ini">{n}</span>{/each}
+      <kbd>{key}</kbd>
+    </span>
+    <span class="name">{p.name}</span>
+    {#if p.summary}<span class="summary">{p.summary}</span>{/if}
+    {#if problem}<span class="sec"><b>{t.phases.problem}</b><span class="md">{@html md(problem)}</span></span>{/if}
+    {#if solution}<span class="sec"><b>{t.phases.solution}</b><span class="md">{@html md(solution)}</span></span>{/if}
+    {#if !p.summary && !problem && !solution && Object.values(p.sections)[0]}
+      <span class="sec"><span class="md">{@html md(Object.values(p.sections)[0])}</span></span>
+    {/if}
+  </button>
+{/snippet}
+
 {#snippet ranking(max: number)}
-  {#if !anyVotes}
+  {#if !anyDuels}
     <p class="muted center">{t.pulse.noVotes}</p>
   {:else}
     <ol class="rank">
       {#each ranked.slice(0, max) as r, i (r.id)}
         {@const p = store.project(r.id)}
-        <li class:quiet={!r.votes}>
+        <li class:quiet={!(r.wins + r.losses)}>
           <span class="n">{i + 1}</span>
-          <div class="name">
+          <div class="who-row">
             <a href={href(`/p/${r.id}`)}>{p?.name ?? r.id}</a>
             <span class="sub">
-              {t.pulse.votes(r.votes)}
+              {t.pulse.record(r.wins, r.losses)}
               {#if p}· {p.priority} {t.pulse.declared}{/if}
               {#if r.split}<b class="split" title={t.pulse.splitHint}>⚡ {t.pulse.split}</b>{/if}
             </span>
-            {#if r.votes}
-              <span class="tally" aria-hidden="true">
-                {#each dirs as d}<span class="sw-{d.tier}" style="width:{pct(r.tally[d.tier], r.votes)}%"></span>{/each}
-              </span>
-            {/if}
           </div>
           <span class="elo">{r.rating}</span>
           <span class="delta" class:upd={r.delta > 0} class:dn={r.delta < 0} title={t.pulse.week}>
@@ -269,7 +243,7 @@
     flex-direction: column;
     gap: 1rem;
     padding: 0 1rem 1.5rem;
-    max-width: 52rem;
+    max-width: 64rem;
     margin: 0 auto;
   }
   .bar {
@@ -314,6 +288,9 @@
   .center {
     text-align: center;
   }
+  .small {
+    font-size: 0.85rem;
+  }
   .err {
     color: #b3261e;
   }
@@ -325,7 +302,7 @@
     text-align: center;
   }
 
-  /* ---- deck */
+  /* ---- duel */
   .progress {
     display: flex;
     gap: 4px;
@@ -342,114 +319,71 @@
   .progress span.cur {
     background: var(--ink-3);
   }
-  .deck {
-    position: relative;
+  .q {
+    text-align: center;
+    font-size: clamp(1.3rem, 1rem + 1.5vw, 1.9rem);
+  }
+  .duel {
     display: grid;
-    place-items: center;
-    flex: 1;
-    min-height: 22rem;
-    padding: 2.4rem 0;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0.9rem;
+    align-items: stretch;
+    animation: in 0.25s var(--ease);
   }
-  .target {
-    position: absolute;
+  @keyframes in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+  .vs {
+    align-self: center;
     font-family: var(--font-display);
-    font-weight: 700;
-    color: var(--fog);
-    transition: color 0.15s, transform 0.15s;
-    pointer-events: none;
-    white-space: nowrap;
-  }
-  .target.lit {
-    transform: scale(1.15);
-  }
-  .t-top {
-    top: 0;
-    left: 50%;
-    translate: -50% 0;
-  }
-  .t-low {
-    bottom: 0;
-    left: 50%;
-    translate: -50% 0;
-  }
-  .t-drop {
-    left: 0;
-    top: 50%;
-    translate: 0 -50%;
-    writing-mode: vertical-rl;
-    rotate: 180deg;
-  }
-  .t-high {
-    right: 0;
-    top: 50%;
-    translate: 0 -50%;
-    writing-mode: vertical-rl;
-  }
-  .t-top.lit {
-    color: var(--must);
-  }
-  .t-high.lit {
-    color: var(--should);
-  }
-  .t-low.lit {
-    color: var(--nice);
-  }
-  .t-drop.lit {
-    color: var(--no);
+    font-weight: 800;
+    color: var(--ink-3);
   }
   .card {
-    grid-area: 1 / 1;
-    position: relative;
-    width: min(30rem, calc(100% - 3rem));
-    min-height: 18rem;
-    background: var(--card);
-    border-radius: 24px;
-    padding: 1.6rem;
-    box-shadow: 0 30px 60px -30px rgba(27, 36, 48, 0.45), 0 0 0 1px rgba(27, 36, 48, 0.06);
-    border: 3px solid transparent;
     display: flex;
     flex-direction: column;
-    gap: 0.8rem;
-    cursor: grab;
-    touch-action: none;
-    user-select: none;
-    transition: transform 0.32s var(--ease), border-color 0.15s, opacity 0.32s;
+    gap: 0.7rem;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    background: var(--card);
+    border-radius: 22px;
+    padding: 1.3rem;
+    border: 3px solid transparent;
+    box-shadow: 0 24px 50px -30px rgba(27, 36, 48, 0.45), 0 0 0 1px rgba(27, 36, 48, 0.06);
+    cursor: pointer;
+    transition: transform 0.2s var(--ease), border-color 0.15s, opacity 0.2s;
+    min-height: 16rem;
+    max-height: 62dvh;
+    overflow: hidden;
   }
-  .card.behind {
-    transform: translateY(14px) scale(0.95);
-    opacity: 0.55;
-    pointer-events: none;
-  }
-  .card.behind h2 {
-    filter: blur(3px);
-  }
-  .card.dragging {
-    transition: border-color 0.15s;
-    cursor: grabbing;
-  }
-  .card.flying {
-    opacity: 0;
-  }
-  .v-top {
-    border-color: var(--must);
-  }
-  .v-high {
+  .card:hover {
     border-color: var(--should);
+    transform: translateY(-3px);
   }
-  .v-low {
-    border-color: var(--nice);
+  .card:active {
+    transform: scale(0.98);
   }
-  .v-drop {
-    border-color: var(--no);
+  .card.win {
+    border-color: var(--should);
+    transform: scale(1.03);
+  }
+  .card.lose {
+    opacity: 0.3;
+    transform: scale(0.96);
   }
   .meta {
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem;
+    align-items: center;
   }
   .stage,
   .ini {
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     font-weight: 750;
     padding: 0.15rem 0.6rem;
     border-radius: 999px;
@@ -458,126 +392,67 @@
     background: var(--paper-2);
     color: var(--ink-2);
   }
-  h2 {
-    font-size: clamp(1.5rem, 1rem + 2vw, 2.1rem);
+  kbd {
+    margin-left: auto;
+    font-family: var(--font-code);
+    font-size: 0.75rem;
+    color: var(--ink-3);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0 0.35rem;
+  }
+  .name {
+    font-family: var(--font-display);
+    font-weight: 750;
+    font-size: clamp(1.35rem, 1rem + 1.4vw, 1.9rem);
     line-height: 1.1;
   }
-  .body {
-    color: var(--ink-2);
+  .summary {
     font-size: 1.05rem;
-    display: -webkit-box;
-    -webkit-line-clamp: 7;
-    line-clamp: 7;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+    color: var(--ink-2);
   }
-  .buttons {
+  .sec {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.6rem;
+    gap: 0.15rem;
+    font-size: 0.95rem;
+    color: var(--ink-2);
   }
-  .verdict {
-    display: grid;
-    gap: 0.1rem;
-    justify-items: center;
-    text-align: center;
-    padding: 0.7rem 0.5rem;
-    border-radius: 16px;
-    border: 2px solid var(--line);
-    background: var(--card);
-  }
-  .verdict:active {
-    transform: scale(0.97);
-  }
-  .arrow {
-    font-size: 1.3rem;
-    font-weight: 800;
-  }
-  .lbl {
-    font-weight: 750;
-  }
-  .hint {
-    font-size: 0.78rem;
+  .sec b {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     color: var(--ink-3);
   }
-  .b-top .arrow {
-    color: var(--must);
-  }
-  .b-high .arrow {
-    color: var(--should);
-  }
-  .b-low .arrow {
-    color: var(--nice);
-  }
-  .b-drop .arrow {
-    color: var(--no);
-  }
-  .b-top:hover {
-    border-color: var(--must);
-    background: var(--must-soft);
-  }
-  .b-high:hover {
-    border-color: var(--should);
-    background: var(--should-soft);
-  }
-  .b-low:hover {
-    border-color: var(--nice);
-    background: var(--nice-soft);
-  }
-  .b-drop:hover {
-    border-color: var(--no);
-    background: var(--no-soft);
+  .sec .md {
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
   .foot {
     display: flex;
     justify-content: space-between;
     align-items: center;
-  }
-  .small {
-    font-size: 0.85rem;
+    gap: 0.5rem;
   }
   .done {
     text-align: center;
     display: grid;
-    gap: 0.5rem;
+    gap: 0.6rem;
     justify-items: center;
-    padding-top: 6vh;
+    padding-top: 5vh;
+  }
+  .row {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
   }
 
   /* ---- ranking */
   .head {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.8rem;
-    align-items: center;
     justify-content: space-between;
-  }
-  .legend {
-    font-size: 0.82rem;
-    color: var(--ink-3);
-    display: inline-flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-    align-items: center;
-  }
-  .sw {
-    display: inline-block;
-    width: 0.7rem;
-    height: 0.7rem;
-    border-radius: 3px;
-    margin-left: 0.4rem;
-  }
-  .sw-top {
-    background: var(--must);
-  }
-  .sw-high {
-    background: var(--should);
-  }
-  .sw-low {
-    background: var(--nice);
-  }
-  .sw-drop {
-    background: var(--no);
   }
   .rank {
     list-style: none;
@@ -606,12 +481,12 @@
     color: var(--ink-3);
     text-align: right;
   }
-  .name {
+  .who-row {
     display: grid;
     gap: 0.2rem;
     min-width: 0;
   }
-  .name a {
+  .who-row a {
     font-weight: 750;
     color: var(--ink);
     text-decoration: none;
@@ -623,14 +498,6 @@
   .split {
     color: var(--must);
     margin-left: 0.3rem;
-  }
-  .tally {
-    display: flex;
-    height: 5px;
-    border-radius: 3px;
-    overflow: hidden;
-    background: var(--paper-2);
-    max-width: 16rem;
   }
   .elo {
     font-family: var(--font-code);
@@ -648,16 +515,21 @@
   .delta.dn {
     color: #b3261e;
   }
-  @media (max-width: 560px) {
-    .verdict .hint {
-      display: none;
-    }
-    .target.t-high,
-    .target.t-drop {
-      display: none;
+  @media (max-width: 680px) {
+    .duel {
+      grid-template-columns: 1fr;
+      gap: 0.5rem;
     }
     .card {
-      width: 100%;
+      min-height: 0;
+      max-height: 34dvh;
+      padding: 1rem;
+    }
+    kbd {
+      display: none;
+    }
+    .foot .small {
+      display: none;
     }
   }
 </style>

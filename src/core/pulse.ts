@@ -1,42 +1,42 @@
-// Pulse: what people feel is most important, one short swipe deck a day.
+// Pulse: what people feel matters most, from duels. Two projects at a time, "which one is
+// more important?", in short rounds a person can stop after. Choosing between two forces the
+// trade-off that rating each project alone never does: alone, everything is important.
 // No node imports here: the studio ranks in the browser, the CLI and server on disk.
 //
-// Every person rates up to `daily` projects a day: ↑ top, → high, ↓ low, ← drop. One
-// person's day becomes Elo matches between the projects they rated: a higher tier beats a
-// lower one, the same tier is a draw. Days are applied in date order, so what people say
-// now moves the ranking more than what they said a month ago.
-
-export const tiers = ["top", "high", "low", "drop"] as const;
-export type Tier = (typeof tiers)[number];
-const points: Record<Tier, number> = { top: 3, high: 2, low: 1, drop: 0 };
+// Every duel is an Elo match, applied in date order, so what people say now moves the ranking
+// more than what they said a month ago. Opponents are random, so a project from the bottom
+// meets the top now and then, and beating it makes a big jump.
 
 export const START = 1500;
 export const K = 32;
-export const DAILY = 10;
-// projects nobody needs to rate any more (paused ones stay: revive or drop is the question)
+/** duels per round */
+export const DAILY = 5;
+// projects nobody needs to compare any more (paused ones stay: revive or drop is the question)
 export const OUT_OF_PULSE = new Set(["done", "dropped"]);
 
-/** One person's swipes on one day: pulse/<date>/<voter>.yaml */
+export interface Duel {
+  win: string;
+  over: string;
+}
+
+/** One person's duels on one day, in order: pulse/<date>/<voter>.yaml */
 export interface PulseDay {
   voter: string;
   date: string;
-  votes: Record<string, Tier>;
+  duels: Duel[];
 }
 
 export interface Ranked {
   id: string;
   rating: number;
-  /** change over the last 7 days of votes */
+  /** change over the last 7 days of duels */
   delta: number;
-  /** how many times it was rated */
-  votes: number;
-  /** ratings per tier */
-  tally: Record<Tier, number>;
-  /** people disagree: the tiers given are far apart */
+  wins: number;
+  losses: number;
+  /** people disagree: pairs with this project were decided both ways */
   split: boolean;
 }
 
-export const isTier = (v: unknown): v is Tier => typeof v === "string" && (tiers as readonly string[]).includes(v);
 export const voterSlug = (name: string) =>
   name
     .trim()
@@ -52,34 +52,25 @@ const daysBefore = (date: string, n: number) => {
   d.setDate(d.getDate() - n);
   return localDate(d);
 };
-
 const byDate = (a: PulseDay, b: PulseDay) => a.date.localeCompare(b.date) || a.voter.localeCompare(b.voter);
+const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+export const isDuel = (d: unknown): d is Duel =>
+  !!d && typeof (d as Duel).win === "string" && typeof (d as Duel).over === "string" && (d as Duel).win !== (d as Duel).over;
 
-/** Elo ratings after applying `days` in date order. Each day moves a project by at most about K. */
+/** Elo ratings after every duel of `days`, in date order. An upset moves both by up to k. */
 export function elo(days: PulseDay[], ids: string[], k = K): Map<string, number> {
   const r = new Map(ids.map((id) => [id, START]));
-  for (const day of [...days].sort(byDate)) {
-    const rated = Object.entries(day.votes).filter(([id, t]) => r.has(id) && isTier(t));
-    if (rated.length < 2) continue;
-    // all matches of a day are scored against the ratings from before it, so the order of
-    // the swipes doesn't matter; k is shared between a project's matches of that day
-    const kk = k / (rated.length - 1);
-    const before = new Map(rated.map(([id]) => [id, r.get(id)!]));
-    for (const [a, ta] of rated) {
-      let change = 0;
-      for (const [b, tb] of rated) {
-        if (a === b) continue;
-        const expected = 1 / (1 + 10 ** ((before.get(b)! - before.get(a)!) / 400));
-        const score = points[ta] > points[tb] ? 1 : points[ta] < points[tb] ? 0 : 0.5;
-        change += kk * (score - expected);
-      }
-      r.set(a, before.get(a)! + change);
+  for (const day of [...days].sort(byDate))
+    for (const { win, over } of day.duels) {
+      if (!r.has(win) || !r.has(over)) continue;
+      const expected = 1 / (1 + 10 ** ((r.get(over)! - r.get(win)!) / 400));
+      r.set(win, r.get(win)! + k * (1 - expected));
+      r.set(over, r.get(over)! - k * (1 - expected));
     }
-  }
   return r;
 }
 
-/** The ranking, best first. `voter` limits it to one person's votes ("just me"). */
+/** The ranking, best first. `voter` limits it to one person's duels ("just me"). */
 export function rank(days: PulseDay[], ids: string[], opts: { today?: string; voter?: string; k?: number } = {}): Ranked[] {
   const mine = opts.voter ? days.filter((d) => voterSlug(d.voter) === voterSlug(opts.voter!)) : days;
   const today = opts.today ?? localDate();
@@ -89,62 +80,79 @@ export function rank(days: PulseDay[], ids: string[], opts: { today?: string; vo
     ids,
     opts.k,
   );
+  // the latest call of each person on each pair; a pair is contested when people call it both ways
+  const calls = new Map<string, Map<string, string>>();
+  for (const d of [...mine].sort(byDate))
+    for (const { win, over } of d.duels) {
+      const key = pairKey(win, over);
+      if (!calls.has(key)) calls.set(key, new Map());
+      calls.get(key)!.set(voterSlug(d.voter), win);
+    }
+  const contested = new Map<string, number>();
+  for (const [key, who] of calls) {
+    const winners = [...who.values()];
+    const [a] = key.split("|");
+    const share = winners.filter((w) => w === a).length / winners.length;
+    if (winners.length >= 2 && Math.min(share, 1 - share) >= 0.3)
+      for (const id of key.split("|")) contested.set(id, (contested.get(id) ?? 0) + 1);
+  }
   return ids
     .map((id) => {
-      const tally: Record<Tier, number> = { top: 0, high: 0, low: 0, drop: 0 };
-      // the latest tier per person counts for the spread, older ones are history
-      const latest = new Map<string, Tier>();
-      for (const d of [...mine].sort(byDate)) {
-        const t = d.votes[id];
-        if (!isTier(t)) continue;
-        tally[t]++;
-        latest.set(voterSlug(d.voter), t);
-      }
-      const pts = [...latest.values()].map((t) => points[t]);
-      const votes = tiers.reduce((n, t) => n + tally[t], 0);
+      let wins = 0;
+      let losses = 0;
+      for (const d of mine)
+        for (const x of d.duels) {
+          if (x.win === id) wins++;
+          if (x.over === id) losses++;
+        }
       return {
         id,
         rating: Math.round(now.get(id)!),
         delta: Math.round(now.get(id)! - weekAgo.get(id)!),
-        votes,
-        tally,
-        split: pts.length >= 3 && Math.max(...pts) - Math.min(...pts) >= 3 && spread(pts) >= 1.1,
+        wins,
+        losses,
+        split: (contested.get(id) ?? 0) >= 2,
       };
     })
-    .sort((a, b) => b.rating - a.rating || b.votes - a.votes || a.id.localeCompare(b.id));
-}
-
-function spread(xs: number[]) {
-  const m = xs.reduce((a, b) => a + b, 0) / xs.length;
-  return Math.sqrt(xs.reduce((a, x) => a + (x - m) ** 2, 0) / xs.length);
+    .sort((a, b) => b.rating - a.rating || b.wins + b.losses - (a.wins + a.losses) || a.id.localeCompare(b.id));
 }
 
 /**
- * Today's cards for one person: projects they rated least come first, then those
- * everybody rated least, then a shuffle that stays the same all day. Projects a person
- * never rated are always in the deck, so the first deck has everything and a new
- * project shows up the next time; `daily` limits the deck after that.
+ * The next duel for one person: the project they compared least (never compared before
+ * anything else) against a random one, never a pair they already decided while there are
+ * others. Random, not close in rating, so the bottom of the barrel meets the top now and then.
  */
-export function deck(days: PulseDay[], ids: string[], voter: string, today: string, daily = DAILY): { cards: string[]; done: string[] } {
+export function nextPair(days: PulseDay[], ids: string[], voter: string, today: string, skipped: string[] = []): [string, string] | null {
+  if (ids.length < 2) return null;
   const me = voterSlug(voter);
-  const done = Object.keys(days.find((d) => d.date === today && voterSlug(d.voter) === me)?.votes ?? {}).filter((id) => ids.includes(id));
-  const mineCount = new Map<string, number>();
-  const allCount = new Map<string, number>();
-  for (const d of days)
-    for (const id of Object.keys(d.votes)) {
-      allCount.set(id, (allCount.get(id) ?? 0) + 1);
-      if (voterSlug(d.voter) === me) mineCount.set(id, (mineCount.get(id) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  const decided = new Set<string>(skipped);
+  let n = skipped.length;
+  for (const d of days) {
+    if (voterSlug(d.voter) !== me) continue;
+    for (const { win, over } of d.duels) {
+      seen.set(win, (seen.get(win) ?? 0) + 1);
+      seen.set(over, (seen.get(over) ?? 0) + 1);
+      decided.add(pairKey(win, over));
+      if (d.date === today) n++;
     }
-  const never = ids.filter((id) => !mineCount.has(id)).length;
-  const left = Math.max(0, Math.min(daily, ids.length) - done.length, never);
-  const cards = ids
-    .filter((id) => !done.includes(id))
-    .map((id) => ({ id, mine: mineCount.get(id) ?? 0, all: allCount.get(id) ?? 0, shuffle: hash(`${today}:${me}:${id}`) }))
-    .sort((a, b) => a.mine - b.mine || a.all - b.all || a.shuffle - b.shuffle)
-    .slice(0, left)
-    .map((c) => c.id);
-  return { cards, done };
+  }
+  const roll = (id: string) => hash(`${today}:${me}:${n}:${id}`);
+  const open = (a: string) => ids.filter((b) => b !== a && !decided.has(pairKey(a, b)));
+  const first = ids.filter((a) => open(a).length).sort((a, b) => (seen.get(a) ?? 0) - (seen.get(b) ?? 0) || roll(a) - roll(b))[0];
+  if (!first) return null;
+  const second = open(first).sort((a, b) => roll(a) - roll(b))[0];
+  // which one is shown first is random too, so the first card has no advantage
+  return roll(first + second) % 2 ? [first, second] : [second, first];
 }
+
+/** How many duels this person decided today. */
+export const duelsToday = (days: PulseDay[], voter: string, today: string) =>
+  days.find((d) => d.date === today && voterSlug(d.voter) === voterSlug(voter))?.duels.length ?? 0;
+
+/** May this person decide another duel today? Only limited when the workspace turns "keep going" off. */
+export const mayDuel = (days: PulseDay[], voter: string, today: string, cfg: { daily?: number; more?: boolean } = {}) =>
+  cfg.more !== false || duelsToday(days, voter, today) < (cfg.daily ?? DAILY);
 
 function hash(s: string) {
   let h = 2166136261;
@@ -152,12 +160,15 @@ function hash(s: string) {
   return h >>> 0;
 }
 
-/** Record one swipe in a list of days (the browser's copy, or before writing the file). */
-export function addVote(days: PulseDay[], voter: string, date: string, project: string, tier: Tier | null): PulseDay[] {
+/** Record a duel, or with `undo` take back the last call on that pair that day. */
+export function addDuel(days: PulseDay[], voter: string, date: string, duel: Duel, undo = false): PulseDay[] {
   const i = days.findIndex((d) => d.date === date && voterSlug(d.voter) === voterSlug(voter));
-  const day: PulseDay = i >= 0 ? { ...days[i], votes: { ...days[i].votes } } : { voter, date, votes: {} };
-  if (tier) day.votes[project] = tier;
-  else delete day.votes[project];
+  const day: PulseDay = i >= 0 ? { ...days[i], duels: [...days[i].duels] } : { voter, date, duels: [] };
+  if (undo) {
+    const key = pairKey(duel.win, duel.over);
+    const j = day.duels.findLastIndex((d) => pairKey(d.win, d.over) === key);
+    if (j >= 0) day.duels.splice(j, 1);
+  } else day.duels.push({ win: duel.win, over: duel.over });
   const rest = days.filter((_, j) => j !== i);
-  return Object.keys(day.votes).length ? [...rest, day] : rest;
+  return day.duels.length ? [...rest, day] : rest;
 }
