@@ -443,6 +443,22 @@ be picked; mark it `baseline: true` on the option to hide its pick button.
 
 ---
 
+## Pulse — pulse/<YYYY-MM-DD>/<voter>.yaml
+
+What people feel matters most, from a short swipe deck a day in the studio (`#/pulse`).
+The studio writes one file per person and day; agents read the ranking with `omgp pulse [--json]`.
+
+```yaml
+voter: Anna
+date: 2026-10-19
+votes: { offline-sync: top, csv-import: high, customer-portal: low, job-templates: drop }
+```
+
+Tiers: `top` (↑ this first), `high` (→ important), `low` (↓ not now), `drop` (← shouldn't do it).
+Each file becomes Elo matches between the projects in it (higher tier wins, same tier draws),
+applied in date order, so recent days weigh more. Done and dropped projects are left out.
+`product.yaml` can set `pulse: { daily: 10, k: 32 }` (cards per day, how far one day moves a rating).
+
 ## Results — sessions/<id>.results.json
 
 Written by the studio. Agents read it; edit only to fix mistakes.
