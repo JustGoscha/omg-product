@@ -138,30 +138,39 @@ export function rank(days: PulseDay[], ids: string[], opts: { today?: string; vo
 }
 
 /**
- * The next duel for one person: the project they compared least (never compared before
- * anything else) against a random one, never a pair they already decided while there are
- * others. Random, not close in rating, so the bottom of the barrel meets the top now and then.
+ * The next duel for one person: a project from the least compared third (never compared
+ * before anything else) against a random one. Nobody comes back within `fresh` duels, so a
+ * round is a mix and not the same few projects catching up, and no pair is decided twice
+ * while there are others. Random opponents, not close ones: the bottom meets the top now and then.
  */
-export function nextPair(days: PulseDay[], ids: string[], voter: string, today: string, skipped: string[] = []): [string, string] | null {
+export function nextPair(days: PulseDay[], ids: string[], voter: string, today: string, skipped: string[] = [], fresh = 10): [string, string] | null {
   if (ids.length < 2) return null;
   const me = voterSlug(voter);
   const seen = new Map<string, number>();
   const decided = new Set<string>(skipped);
-  let n = skipped.length;
-  for (const d of days) {
+  const todays: string[] = [];
+  for (const d of [...days].sort(byDate)) {
     if (voterSlug(d.voter) !== me) continue;
     for (const { win, over } of d.duels) {
       seen.set(win, (seen.get(win) ?? 0) + 1);
       seen.set(over, (seen.get(over) ?? 0) + 1);
       decided.add(pairKey(win, over));
-      if (d.date === today) n++;
+      if (d.date === today) todays.push(win, over);
     }
   }
+  const n = todays.length / 2 + skipped.length;
+  const recent = new Set([...todays.slice(-2 * Math.min(fresh, Math.floor((ids.length - 2) / 2))), ...skipped.slice(-fresh).flatMap((k) => k.split("|"))]);
   const roll = (id: string) => hash(`${today}:${me}:${n}:${id}`);
   const open = (a: string) => ids.filter((b) => b !== a && !decided.has(pairKey(a, b)));
-  const first = ids.filter((a) => open(a).length).sort((a, b) => (seen.get(a) ?? 0) - (seen.get(b) ?? 0) || roll(a) - roll(b))[0];
-  if (!first) return null;
-  const second = open(first).sort((a, b) => roll(a) - roll(b))[0];
+  const firsts = ids.filter((a) => open(a).length);
+  if (!firsts.length) return null;
+  const rested = firsts.filter((a) => !recent.has(a));
+  const pool = (rested.length ? rested : firsts).sort((a, b) => (seen.get(a) ?? 0) - (seen.get(b) ?? 0) || roll(a) - roll(b));
+  // the least compared third, at least a handful, so coverage stays fair without clustering
+  const least = pool.slice(0, Math.max(5, Math.ceil(pool.length / 3)));
+  const first = least.sort((a, b) => roll(a) - roll(b))[0];
+  const opponents = open(first);
+  const second = (opponents.some((b) => !recent.has(b)) ? opponents.filter((b) => !recent.has(b)) : opponents).sort((a, b) => roll(a) - roll(b))[0];
   // which one is shown first is random too, so the first card has no advantage
   return roll(first + second) % 2 ? [first, second] : [second, first];
 }

@@ -62,6 +62,19 @@ describe("pulse", () => {
     expect(nextPair([], ["a"], "Anna", "2026-10-19")).toBeNull();
   });
 
+  test("a round is a mix: nobody comes back within ten duels", () => {
+    const many = Array.from({ length: 40 }, (_, i) => `p${i}`);
+    // five projects nobody compared yet must not take over the round
+    let days = [day("Anna", "2026-10-18", many.slice(5).map((id, i): [string, string] => [id, many[5 + ((i + 1) % 35)]]))];
+    const shown: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const p = nextPair(days, many, "Anna", "2026-10-19")!;
+      shown.push(...p);
+      days = addDuel(days, "Anna", "2026-10-19", { win: p[0], over: p[1] });
+    }
+    expect(new Set(shown).size).toBe(20);
+  });
+
   test("keep going is on unless the workspace turns it off", () => {
     const days = [day("Anna", "2026-10-19", [["a", "b"], ["c", "d"]])];
     expect(mayDuel(days, "Anna", "2026-10-19", { daily: 2 })).toBe(true);
