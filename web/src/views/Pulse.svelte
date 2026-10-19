@@ -199,8 +199,8 @@
             <input class="field" placeholder={t.steps.placeholder[i]} value={draft(p)[i]} oninput={(e) => setDraft(p, i, (e.target as HTMLInputElement).value)} />
           {/each}
           <div class="row">
-            <button class="btn small ghost" type="button" onclick={() => walk++}>{t.pulse.skip}</button>
-            <button class="btn primary" type="submit">{walk + 1 < tops.length ? t.steps.saveNext : t.steps.save}</button>
+            <button class="btn" type="button" onclick={() => walk++}>{t.pulse.skip}</button>
+            <button class="btn primary" type="submit"><span class="ico">✅</span>{walk + 1 < tops.length ? t.steps.saveNext : t.steps.save}</button>
           </div>
         </form>
       </section>
@@ -215,9 +215,9 @@
         <h1>{t.pulse.roundDone}</h1>
         <p class="muted">{canMore ? t.pulse.roundBody : t.pulse.limitBody}</p>
         <div class="row">
-          {#if history.length}<button class="btn small ghost" onclick={undo}>↶ {t.pulse.undo}</button>{/if}
-          <button class="btn" class:primary={!canMore} onclick={() => (stopped = true)}>{t.steps.stop}</button>
-          {#if canMore}<button class="btn primary" onclick={more}>{t.pulse.more(daily)}</button>{/if}
+          {#if history.length}<button class="btn" onclick={undo}><span class="ico">↩️</span>{t.pulse.undo}</button>{/if}
+          <button class="btn" class:primary={!canMore} onclick={() => (stopped = true)}><span class="ico">✋</span>{t.steps.stop}</button>
+          {#if canMore}<button class="btn primary" onclick={more}><span class="ico">⚡</span>{t.pulse.more(daily)}</button>{/if}
         </div>
       </section>
       {@render ranking(5)}
@@ -234,9 +234,9 @@
         </div>
       {/key}
       <div class="foot">
-        {#if history.length}<button class="btn small ghost" onclick={undo}>↶ {t.pulse.undo}</button>{:else}<span></span>{/if}
+        {#if history.length}<button class="btn" onclick={undo}><span class="ico">↩️</span>{t.pulse.undo}</button>{:else}<span></span>{/if}
         <span class="muted small tap">{t.pulse.pick}{anonymous ? ` · ${t.pulse.anonymous}` : ""}</span>
-        <button class="btn small ghost" onclick={skip} title={t.pulse.neitherHint}>{t.pulse.neither} ↓</button>
+        <button class="btn" onclick={skip} title={t.pulse.neitherHint}><span class="ico">🤷</span>{t.pulse.neither}<kbd class="key">N</kbd></button>
       </div>
       <p class="muted small center wide">{t.pulse.inPulse(ids.length, ws.projects.length - ids.length)}</p>
     {/if}
@@ -683,6 +683,83 @@
   .delta.dn {
     color: #b3261e;
   }
+  /* ---- buttons you press: soft, raised, they press in (neumorphic) */
+  .pulse {
+    --raise: 4px 4px 10px rgba(27, 36, 48, 0.14), -4px -4px 10px rgba(255, 255, 255, 0.95), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    --press: inset 3px 3px 7px rgba(27, 36, 48, 0.18), inset -3px -3px 7px rgba(255, 255, 255, 0.85);
+  }
+  .pulse :global(.btn) {
+    height: auto;
+    min-height: 2.9rem;
+    padding: 0.55rem 1.25rem;
+    gap: 0.5rem;
+    justify-content: center;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    background: linear-gradient(160deg, #ffffff 0%, #e9edeb 100%);
+    color: var(--ink);
+    font-weight: 750;
+    font-size: 0.98rem;
+    box-shadow: var(--raise);
+    transition: box-shadow 0.12s, transform 0.08s, filter 0.12s;
+  }
+  .pulse :global(.btn:hover) {
+    border-color: rgba(255, 255, 255, 0.8);
+    filter: brightness(1.02);
+    transform: translateY(-1px);
+  }
+  .pulse :global(.btn:active) {
+    box-shadow: var(--press);
+    transform: translateY(1px);
+  }
+  .pulse :global(.btn.primary) {
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.25);
+    background: linear-gradient(160deg, #42ab74 0%, #2a7d52 100%);
+    box-shadow: 4px 4px 12px rgba(42, 125, 82, 0.4), -4px -4px 10px rgba(255, 255, 255, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+  }
+  .pulse :global(.btn.primary:active) {
+    box-shadow: inset 3px 3px 8px rgba(0, 0, 0, 0.28), inset -2px -2px 6px rgba(255, 255, 255, 0.15);
+  }
+  .ico {
+    font-size: 1.05em;
+    line-height: 1;
+  }
+  .key {
+    font-family: var(--font-code);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--ink-3);
+    padding: 0.05rem 0.35rem;
+    border-radius: 6px;
+    background: var(--paper);
+    box-shadow: inset 1px 1px 2px rgba(27, 36, 48, 0.15), inset -1px -1px 2px rgba(255, 255, 255, 0.9);
+  }
+  /* the switch: a pressed-in track with a raised pill */
+  .seg {
+    background: var(--paper);
+    box-shadow: var(--press);
+    padding: 0.25rem;
+  }
+  .seg button.on {
+    background: linear-gradient(160deg, #ffffff 0%, #eef1ef 100%);
+    box-shadow: 3px 3px 7px rgba(27, 36, 48, 0.14), -2px -2px 6px rgba(255, 255, 255, 0.9);
+  }
+  /* the cards are the biggest buttons: raised, and they press in */
+  .card {
+    background: linear-gradient(165deg, #ffffff 0%, #f6f8f7 100%);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 8px 8px 22px rgba(27, 36, 48, 0.13), -8px -8px 20px rgba(255, 255, 255, 0.95), inset 0 1px 0 #fff;
+  }
+  .card:hover {
+    border-color: rgba(47, 138, 91, 0.55);
+  }
+  .card:active {
+    transform: scale(0.985);
+    box-shadow: inset 4px 4px 12px rgba(27, 36, 48, 0.12), inset -4px -4px 12px rgba(255, 255, 255, 0.9);
+  }
+
   /* phone: the duel is one screen; header one row, two equal cards, actions at the thumb */
   @media (max-width: 680px) {
     .pulse {
@@ -796,11 +873,9 @@
     }
     .foot :global(.btn) {
       flex: 1;
-      justify-content: center;
-      padding: 0.7rem 0.9rem;
-      font-size: 0.95rem;
-      background: var(--card);
-      border: 1.5px solid var(--line);
+    }
+    .key {
+      display: none;
     }
     .walk {
       margin-top: 1rem;

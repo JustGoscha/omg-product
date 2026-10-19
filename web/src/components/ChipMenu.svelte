@@ -192,6 +192,9 @@
     cursor: pointer;
     transition: box-shadow 0.15s, transform 0.1s;
     white-space: nowrap;
+    /* a small raised button that presses in */
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 60%);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 1.5px 3px rgba(27, 36, 48, 0.16), 0 0 0 1px rgba(27, 36, 48, 0.05);
   }
   .chip.icon {
     padding: 0 0.5rem 0 0.55rem;
@@ -200,12 +203,13 @@
     height: 1.65rem;
     font-size: 0.78rem;
   }
-  .chip:hover,
-  .chip.open {
-    box-shadow: 0 0 0 1.5px var(--c);
+  .chip:hover {
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 2px 6px rgba(27, 36, 48, 0.2), 0 0 0 1.5px var(--c);
   }
+  .chip.open,
   .chip:active {
-    transform: scale(0.97);
+    transform: translateY(1px);
+    box-shadow: inset 1.5px 1.5px 4px rgba(27, 36, 48, 0.22), inset -1px -1px 3px rgba(255, 255, 255, 0.7);
   }
   .chip:disabled {
     cursor: default;
