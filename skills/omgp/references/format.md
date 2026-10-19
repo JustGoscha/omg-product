@@ -115,6 +115,8 @@ stage: kickoff        # idea | exploring | prototyping | kickoff | scoped | buil
 reach: unreleased     # how far it is out in the world, apart from how far it is built:
                       # unreleased | ready (market-ready) | released (public) | launched (people were told)
                       # | marketing | customers (first users / paying) | improving (improve, scale, synergies)
+openSource: true      # the code is public; independent of reach (an open-source project can be released,
+                      # launched, or have users and contributors)
 snoozed: 2026-11-19   # Pulse: shelved, out of the duels until that day, then back by itself
                       # (killed = stage: dropped, never comes back)
 next:                 # the next steps, most important first, at most 3 (one string is fine too);

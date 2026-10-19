@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Stage and reach of a project as two chips you can change in place; saved into project.md.
+  // Built (stage), Out (reach) and the pulse shelf of a project as chip menus; saved into project.md.
   import { store } from "../lib/store.svelte";
   import { api } from "../lib/api";
   import { isStatic } from "../lib/static";
@@ -7,10 +7,19 @@
   import { reaches } from "../../../src/core/pulse";
   import { stages } from "../../../src/core/schema";
   import type { ProjectInfo } from "../lib/types";
+  import ChipMenu, { type ChipOption } from "./ChipMenu.svelte";
 
   let { project: p, small = false, onshelve }: { project: ProjectInfo; small?: boolean; onshelve?: () => void } = $props();
   const t = $derived(store.t);
   let error = $state<string | null>(null);
+
+  const STAGE_EMOJI: Record<string, string> = {
+    idea: "💡", exploring: "🔍", prototyping: "🧪", kickoff: "🤝", scoped: "📐", building: "🔨",
+    rollout: "🚢", measuring: "📊", done: "✅", paused: "⏸️", dropped: "☠️",
+  };
+  const REACH_EMOJI: Record<string, string> = {
+    unreleased: "🔒", ready: "📦", released: "🌐", launched: "📣", marketing: "📈", customers: "💶", improving: "🔁",
+  };
 
   async function set(patch: Record<string, unknown>) {
     try {
@@ -21,50 +30,75 @@
       error = (e as Error).message;
     }
   }
+
   // shelve: out of the duels for a month, then back; kill: never comes back
-  const today = new Date();
   const until = (days: number) => {
-    const d = new Date(today);
+    const d = new Date();
     d.setDate(d.getDate() + days);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
   const snoozedNow = $derived(!!p.snoozed && p.snoozed >= until(0));
   const cfg = $derived(store.ws?.config);
   const canKill = $derived(cfg?.pulse?.kill ?? cfg?.profile?.kind !== "company");
-  const out = $derived(snoozedNow || p.stage === "dropped");
+  const shelfState = $derived(p.stage === "dropped" ? "kill" : snoozedNow ? "shelve" : "in");
   async function shelf(v: string) {
     if (v === "shelve") await set({ snoozed: until(30) });
     else if (v === "kill") await set({ stage: "dropped", snoozed: null });
-    else if (v === "back") await set({ snoozed: null, ...(p.stage === "dropped" ? { stage: "paused" } : {}) });
+    else await set({ snoozed: null, ...(p.stage === "dropped" ? { stage: "paused" } : {}) });
     onshelve?.();
   }
-  // the chip must not choose the card it sits on
-  const stop = (e: Event) => e.stopPropagation();
+
+  const stageOptions = $derived<ChipOption[]>(
+    stages.map((s) => ({ value: s, emoji: STAGE_EMOJI[s] ?? "•", label: t.rm.stages[s] ?? s, tone: s === "dropped" ? "danger" : undefined })),
+  );
+  const reachOptions = $derived<ChipOption[]>(reaches.map((r) => ({ value: r, emoji: REACH_EMOJI[r], label: t.reach[r], hint: t.status.reachHint[r] })));
+  const shelfOptions = $derived<ChipOption[]>([
+    { value: "in", emoji: "🎯", label: t.shelf.in, hint: t.shelf.inHint },
+    { value: "shelve", emoji: "💤", label: snoozedNow ? t.shelf.until(p.snoozed!) : t.shelf.shelve, hint: t.shelf.shelveHint },
+    ...(canKill || p.stage === "dropped" ? [{ value: "kill", emoji: "☠️", label: t.shelf.kill, hint: t.shelf.killHint, tone: "danger" as const }] : []),
+  ]);
 </script>
 
-<span class="picker" class:small onclick={stop} onkeydown={stop} onpointerdown={stop} role="presentation">
-  <label class="chip" style="color:{stageColor(p.stage)};background:{stageSoft(p.stage)}" title={t.status.builtHint}>
-    <select value={p.stage} disabled={isStatic} onchange={(e) => set({ stage: (e.target as HTMLSelectElement).value })}>
-      {#each stages as s}<option value={s}>{t.rm.stages[s] ?? s}</option>{/each}
-    </select>
-    <span><b>{t.status.built}</b> {t.rm.stages[p.stage] ?? p.stage} ▾</span>
-  </label>
-  <label class="chip reach" class:unset={!p.reach} title={t.status.outHint}>
-    <select value={p.reach ?? ""} disabled={isStatic} onchange={(e) => set({ reach: (e.target as HTMLSelectElement).value || null })}>
-      <option value="">—</option>
-      {#each reaches as r}<option value={r}>{t.reach[r]}</option>{/each}
-    </select>
-    <span><b>{t.status.out}</b> {p.reach ? t.reach[p.reach] : "?"} ▾</span>
-  </label>
-  <label class="chip shelf" class:on={out} class:dead={p.stage === "dropped"} title={t.shelf.hint}>
-    <select value="" disabled={isStatic} onchange={(e) => shelf((e.target as HTMLSelectElement).value)}>
-      <option value="" disabled selected>{t.shelf.title}</option>
-      {#if !out}<option value="shelve">{t.shelf.shelve}</option>{/if}
-      {#if canKill && p.stage !== "dropped"}<option value="kill">{t.shelf.kill}</option>{/if}
-      {#if out}<option value="back">{t.shelf.back}</option>{/if}
-    </select>
-    <span>{p.stage === "dropped" ? t.shelf.killed : snoozedNow ? t.shelf.until(p.snoozed!) : "💤"} ▾</span>
-  </label>
+<span class="picker" role="presentation">
+  <ChipMenu
+    {small}
+    options={stageOptions}
+    value={p.stage}
+    prefix={t.status.built}
+    title={t.status.builtHint}
+    heading={t.status.builtHint}
+    color={stageColor(p.stage)}
+    background={stageSoft(p.stage)}
+    disabled={isStatic}
+    onselect={(v) => set({ stage: v })}
+  />
+  <ChipMenu
+    {small}
+    options={reachOptions}
+    value={p.reach ?? null}
+    suffix={p.openSource ? `· ${t.status.openSource}` : ""}
+    toggles={[{ value: "openSource", emoji: "🧑‍💻", label: t.status.openSource, hint: t.status.openSourceHint, on: !!p.openSource }]}
+    ontoggle={() => set({ openSource: p.openSource ? null : true })}
+    prefix={t.status.out}
+    title={t.status.outHint}
+    heading={t.status.outHint}
+    color={p.reach ? "var(--nice)" : "var(--ink-3)"}
+    background={p.reach ? "var(--nice-soft)" : "var(--paper-2)"}
+    disabled={isStatic}
+    onselect={(v) => set({ reach: v })}
+  />
+  <ChipMenu
+    {small}
+    options={shelfOptions}
+    value={shelfState}
+    iconOnly={shelfState === "in"}
+    title={t.shelf.hint}
+    heading={t.shelf.title}
+    color={shelfState === "kill" ? "#8f2a2a" : "var(--ink-3)"}
+    background={shelfState === "kill" ? "#f6dcdc" : shelfState === "shelve" ? "var(--no-soft)" : "var(--paper-2)"}
+    disabled={isStatic}
+    onselect={shelf}
+  />
   {#if error}<span class="err">{error}</span>{/if}
 </span>
 
@@ -74,56 +108,6 @@
     flex-wrap: wrap;
     gap: 0.4rem;
     align-items: center;
-  }
-  .chip {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    font-size: 0.8rem;
-    font-weight: 750;
-    padding: 0.2rem 0.65rem;
-    border-radius: 999px;
-    cursor: pointer;
-  }
-  .small .chip {
-    font-size: 0.75rem;
-    padding: 0.15rem 0.6rem;
-  }
-  .chip:hover {
-    box-shadow: 0 0 0 1.5px currentColor;
-  }
-  .reach {
-    background: var(--nice-soft);
-    color: var(--nice);
-  }
-  .shelf {
-    background: var(--paper-2);
-    color: var(--ink-3);
-  }
-  .shelf.on {
-    background: var(--no-soft);
-    color: var(--ink-2);
-  }
-  .shelf.dead {
-    background: #f6dcdc;
-    color: #8f2a2a;
-  }
-  .reach.unset {
-    background: var(--paper-2);
-    color: var(--ink-3);
-  }
-  b {
-    font-weight: 600;
-    opacity: 0.7;
-    margin-right: 0.25rem;
-  }
-  /* the native select sits invisibly on top: real dropdown, chip look */
-  select {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    cursor: pointer;
-    font-size: 16px;
   }
   .err {
     color: #b3261e;
