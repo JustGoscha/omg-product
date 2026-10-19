@@ -26,18 +26,18 @@
 </script>
 
 <span class="picker" class:small onclick={stop} onkeydown={stop} onpointerdown={stop} role="presentation">
-  <label class="chip" style="color:{stageColor(p.stage)};background:{stageSoft(p.stage)}" title={t.facts.stage}>
+  <label class="chip" style="color:{stageColor(p.stage)};background:{stageSoft(p.stage)}" title={t.status.builtHint}>
     <select value={p.stage} disabled={isStatic} onchange={(e) => set({ stage: (e.target as HTMLSelectElement).value })}>
       {#each stages as s}<option value={s}>{t.rm.stages[s] ?? s}</option>{/each}
     </select>
-    <span>{t.rm.stages[p.stage] ?? p.stage} ▾</span>
+    <span><b>{t.status.built}</b> {t.rm.stages[p.stage] ?? p.stage} ▾</span>
   </label>
-  <label class="chip reach" title={t.facts.reach}>
+  <label class="chip reach" class:unset={!p.reach} title={t.status.outHint}>
     <select value={p.reach ?? ""} disabled={isStatic} onchange={(e) => set({ reach: (e.target as HTMLSelectElement).value || null })}>
       <option value="">—</option>
       {#each reaches as r}<option value={r}>{t.reach[r]}</option>{/each}
     </select>
-    <span>{p.reach ? t.reach[p.reach] : t.facts.reach} ▾</span>
+    <span><b>{t.status.out}</b> {p.reach ? t.reach[p.reach] : "?"} ▾</span>
   </label>
   {#if error}<span class="err">{error}</span>{/if}
 </span>
@@ -69,6 +69,15 @@
   .reach {
     background: var(--nice-soft);
     color: var(--nice);
+  }
+  .reach.unset {
+    background: var(--paper-2);
+    color: var(--ink-3);
+  }
+  b {
+    font-weight: 600;
+    opacity: 0.7;
+    margin-right: 0.25rem;
   }
   /* the native select sits invisibly on top: real dropdown, chip look */
   select {

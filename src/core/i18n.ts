@@ -195,6 +195,12 @@ const en = {
   findings: "Findings",
   reach: { unreleased: "Not out yet", ready: "Market-ready", released: "Released", launched: "Launched", marketing: "Marketing", customers: "Has customers", improving: "Improving" } as Record<string, string>,
   nextMove: "Next",
+  status: {
+    built: "Built:",
+    out: "Out:",
+    builtHint: "How far it is built: idea … done",
+    outHint: "How far it is out in the world: not out yet, market-ready, released, launched, marketing, customers, improving",
+  },
   steps: {
     top: (n: number) => `#${n} right now`,
     ask: "What are the 3 most important next tasks?",
@@ -502,6 +508,12 @@ const de: Labels = {
   findings: "Befunde",
   reach: { unreleased: "Noch nicht draußen", ready: "Marktreif", released: "Veröffentlicht", launched: "Gelauncht", marketing: "Marketing", customers: "Hat Kunden", improving: "Wird verbessert" },
   nextMove: "Als Nächstes",
+  status: {
+    built: "Gebaut:",
+    out: "Draußen:",
+    builtHint: "Wie weit es gebaut ist: Idee … fertig",
+    outHint: "Wie weit es draußen in der Welt ist: noch nicht, marktreif, veröffentlicht, gelauncht, Marketing, Kunden, Verbessern",
+  },
   steps: {
     top: (n: number) => `gerade Platz ${n}`,
     ask: "Was sind die 3 wichtigsten nächsten Aufgaben?",
