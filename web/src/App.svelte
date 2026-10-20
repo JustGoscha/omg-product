@@ -7,6 +7,7 @@
   import Summary from "./views/Summary.svelte";
   import ProtoView from "./views/ProtoView.svelte";
   import Join from "./views/Join.svelte";
+  import Pulse from "./views/Pulse.svelte";
   import AgentDock from "./components/AgentDock.svelte";
   import DemoBadge from "./components/DemoBadge.svelte";
   import { isStatic } from "./lib/static";
@@ -37,8 +38,10 @@
   <ProtoView project={r.project} file={r.file} />
 {:else if r.name === "join"}
   <Join project={r.project} session={r.session} />
+{:else if r.name === "pulse"}
+  <Pulse results={r.results} />
 {:else}
   <div style="padding:2rem"><a href={href("/")}>← Roadmap</a></div>
 {/if}
 
-{#if r.name !== "join"}{#if isStatic}<DemoBadge />{:else}<AgentDock />{/if}{/if}
+{#if r.name !== "join" && r.name !== "pulse"}{#if isStatic}<DemoBadge />{:else}<AgentDock />{/if}{/if}

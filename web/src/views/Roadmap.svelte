@@ -6,6 +6,7 @@
   import type { ProjectInfo, Span } from "../lib/types";
   import { STAGES, stageColor } from "../lib/stages";
   import StageBoard from "../components/StageBoard.svelte";
+  import { pulse } from "../lib/pulse.svelte";
   import { isStatic } from "../lib/static";
 
   // One row per project, grouped by initiative or stream. Time runs left to right and
@@ -13,7 +14,7 @@
   type Zoom = "weeks" | "months" | "quarters" | "years";
   type LaneMode = "initiative" | "stream" | "stage";
   type View = "stages" | "time";
-  type Order = "stage" | "start" | "priority";
+  type Order = "stage" | "start" | "priority" | "pulse";
   // Never more than a handful at once: at most 7 groups, at most 3 projects per group
   // in "current" (5 otherwise), at most 3 lighthouses. The rest sits behind "+N".
   type Focus = "now" | "planned" | "all";
@@ -53,7 +54,14 @@
   let laneMode = $state<LaneMode>(read("omgp:lanes", "initiative") as LaneMode);
   let collapsed = $state<Set<string>>(new Set(JSON.parse(read("omgp:collapsed", "[]"))));
   let view = $state<View>(read("omgp:view", "stages") === "time" ? "time" : "stages");
-  let order = $state<Order>((["stage", "start", "priority"].includes(read("omgp:order", "")) ? read("omgp:order", "") : "stage") as Order);
+  // personal workspaces stay light: no timeline, no dates; what matters now and what to do next
+  const light = $derived(ws?.config.profile?.kind === "personal");
+  $effect(() => {
+    if (light) view = "stages";
+  });
+  let order = $state<Order>((["stage", "start", "priority", "pulse"].includes(read("omgp:order", "")) ? read("omgp:order", "") : "stage") as Order);
+  pulse.start();
+  const pulsePos = (p: ProjectInfo) => pulse.positions.get(p.id)?.pos ?? 9999;
   let focus = $state<Focus>((["now", "planned", "all"].includes(read("omgp:focus", "")) ? read("omgp:focus", "") : "now") as Focus);
   type Filter = { initiatives: string[]; phases: Phase[]; streams: string[] };
   const noFilter = (): Filter => ({ initiatives: [], phases: [], streams: [] });
@@ -197,9 +205,17 @@
     const i = (STAGES as readonly string[]).indexOf(p.stage);
     return i < 0 ? 99 : i;
   };
-  // the order people pick: by stage (furthest along first), by start, by priority
+  // the order people pick: by stage (furthest along first), by start, by priority, by the Pulse ranking
   const ordered = (a: ProjectInfo, b: ProjectInfo) =>
-    order === "stage" ? stageIdx(b) - stageIdx(a) || byStart(a, b) : order === "priority" ? prio[a.priority] - prio[b.priority] || byStart(a, b) : byStart(a, b);
+    order === "stage"
+      ? stageIdx(b) - stageIdx(a) || byStart(a, b)
+      : order === "priority"
+        ? prio[a.priority] - prio[b.priority] || byStart(a, b)
+        : order === "pulse"
+          ? pulsePos(a) - pulsePos(b) || byStart(a, b)
+          : byStart(a, b);
+  // the stage board: most popular in the Pulse first once people voted, the rest in the chosen order
+  const boardOrder = (a: ProjectInfo, b: ProjectInfo) => (pulse.positions.size ? pulsePos(a) - pulsePos(b) : 0) || ordered(a, b);
   // which projects of a group come first when not all fit: a meeting soon, a conflict, running now, priority
   const relevance = (p: ProjectInfo) => {
     const soon = addDays(today, 21), sp = spanOf(p);
@@ -496,7 +512,9 @@
 
   const sel = $derived(selected ? ws?.projects.find((p) => p.id === selected) : null);
   const name = (id: string) => ws?.projects.find((p) => p.id === id)?.name ?? id;
-  const findingsCount = $derived(ws ? ws.analysis.conflicts.length + ws.analysis.cycles.length + ws.analysis.overload.length + ws.analysis.bottlenecks.length : 0);
+  const findingsCount = $derived(
+    ws ? ws.analysis.conflicts.length + ws.analysis.cycles.length + ws.analysis.overload.length + ws.analysis.bottlenecks.length + ws.analysis.notOut.length + (ws.analysis.unfocused ? 1 : 0) : 0,
+  );
   const excerpt = (p: ProjectInfo) => {
     const k = Object.keys(p.sections).find((s) => s.startsWith("problem"));
     return (k ? p.sections[k] : (p.summary ?? "")).replace(/[#*_>`-]/g, "").trim().slice(0, 280);
@@ -525,11 +543,13 @@
       <strong>{ws?.config.name ?? "…"}</strong>
       <span class="muted">{t.roadmap}</span>
     </div>
-    <div class="seg" role="group" aria-label="view">
-      {#each ["stages", "time"] as const as v}
-        <button class:on={view === v} onclick={() => (view = v)}>{t.rm.view[v]}</button>
-      {/each}
-    </div>
+    {#if !light}
+      <div class="seg" role="group" aria-label="view">
+        {#each ["stages", "time"] as const as v}
+          <button class:on={view === v} onclick={() => (view = v)}>{t.rm.view[v]}</button>
+        {/each}
+      </div>
+    {/if}
     <div class="seg" role="group" aria-label={t.rm.filter}>
       {#each ["now", "planned", "all"] as const as f}
         <button class:on={focus === f} title={t.rm.focusHint[f]} onclick={() => ((focus = f), (expanded = new Set()), (allGroups = false))}>{t.rm.focus[f]} <small class="cnt">{countFor(f)}</small></button>
@@ -556,6 +576,7 @@
     {#if ws?.issues.some((i) => i.level === "error")}
       <span class="chip bad" title={ws.issues.map((i) => `${i.file}: ${i.message}`).join("\n")}>{ws.issues.filter((i) => i.level === "error").length} errors</span>
     {/if}
+    <a class="btn small" href={href("/pulse")} title={t.pulse.hint}>{t.pulse.open}</a>
     <button class="btn small" class:on={drawer} onclick={() => ((drawer = !drawer), (selected = null))}>{t.findings} <b>{findingsCount}</b></button>
     {#if !isStatic}<span class="live" class:on={store.connected} title={store.connected ? "live" : "offline"}></span>{/if}
   </header>
@@ -591,7 +612,7 @@
         <div>
           <h3>{t.rm.order}</h3>
           <div class="seg">
-            {#each ["stage", "start", "priority"] as const as o}<button class:on={order === o} onclick={() => (order = o)}>{t.rm.orders[o]}</button>{/each}
+            {#each ["stage", "start", "priority", "pulse"] as const as o}<button class:on={order === o} onclick={() => (order = o)}>{t.rm.orders[o]}</button>{/each}
           </div>
         </div>
         {#if view === "time"}
@@ -622,7 +643,7 @@
         <button class="btn small" onclick={() => (filterCount ? (only = noFilter()) : (focus = "all"))}>{filterCount ? t.rm.reset : t.rm.showAll}</button>
       </div>
     {:else if ws && view === "stages"}
-      <StageBoard projects={visible} {today} perColumn={5} {spanOf} order={ordered} pick={byRelevance} />
+      <StageBoard projects={visible} {today} perColumn={5} {spanOf} order={boardOrder} pick={pulse.positions.size ? boardOrder : byRelevance} rankOf={(id) => pulse.positions.get(id)?.pos} focus={pulse.positions.size ? (ws?.config.profile?.focus ?? 3) : 0} dates={!light} />
     {:else if ws}
       <div class="axis" style="--lw:{LABEL_W}px">
         <div class="axis-time" style="width:{width}px">
@@ -698,7 +719,7 @@
             <div class="row prow" role="group" aria-label={p.name} class:sel={selected === p.id} class:dim={chain && !chain.has(p.id)} style="top:{r.y}px;height:{ROW}px"
               onpointerenter={() => (hovered = p.id)} onpointerleave={() => (hovered = null)}>
               <a class="label" href={href(`/p/${p.id}`)} style="--c:{colorOf(p)}">
-                <span class="pname">{p.name}</span>
+                <span class="pname">{#if pulse.positions.get(p.id)}<b class="rank" title={t.pulse.title}>#{pulse.positions.get(p.id)!.pos}</b> {/if}{p.name}</span>
                 <span class="pmeta">
                   <span class="stage" style="color:{stageColor(p.stage)}">{t.rm.stages[p.stage] ?? p.stage}</span>
                   {#if p.size}<span>{p.size}</span>{/if}
@@ -800,6 +821,18 @@
             <h3 class="bad">Cycles</h3>
             {#each a.cycles as cy}<p class="finding">{cy.map(name).join(" → ")}</p>{/each}
           {/if}
+          {#if a.unfocused}
+            <h3 class="warn">{t.unfocused(a.unfocused.active.length, a.unfocused.focus)}</h3>
+            {#each a.unfocused.active as id}<button class="finding" onclick={() => reveal(id)}>{name(id)}</button>{/each}
+          {/if}
+          {#if a.notOut.length}
+            <h3 class="warn">{t.notOut}</h3>
+            <p class="muted small">{t.notOutHint}</p>
+            {#each a.notOut as id}
+              {@const p = ws.projects.find((x) => x.id === id)}
+              <button class="finding" onclick={() => reveal(id)}><strong>{name(id)}</strong> <span class="muted">{t.reach[p?.reach ?? "unreleased"]}{p?.next?.length ? ` · ${p.next[0]}` : ""}</span></button>
+            {/each}
+          {/if}
           {#if a.overload.length}
             <h3 class="warn">{t.overload}</h3>
             {#each a.overload as o}
@@ -815,7 +848,7 @@
               <button class="finding" onclick={() => reveal(b.project)}><strong>{name(b.project)}</strong> <span class="muted">← {b.dependents.map(name).join(", ")}</span></button>
             {/each}
           {/if}
-          {#if a.unscheduled.length}
+          {#if a.unscheduled.length && !light}
             <h3>High priority, no date</h3>
             {#each a.unscheduled as id}<button class="finding" onclick={() => reveal(id)}>{name(id)}</button>{/each}
           {/if}
@@ -888,6 +921,11 @@
     display: inline-flex;
     align-items: center;
     gap: 0.15rem;
+  }
+  .rank {
+    font-family: var(--font-code);
+    font-size: 0.78rem;
+    color: var(--should);
   }
   .cnt {
     font-size: 0.75rem;

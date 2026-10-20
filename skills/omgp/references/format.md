@@ -53,6 +53,22 @@ agent:                            # optional: lets the studio start an agent for
   command: "claude -p --permission-mode acceptEdits"   # prompt is passed on stdin
 ```
 
+`profile` (written by the `omgp-onboard` interview) says who the workspace is for and what counts:
+
+```yaml
+profile:
+  kind: personal          # personal | company
+  goals: [income, portfolio]
+  doneMeans: launched     # a project is only done this far out in the world (a reach), or never:
+                          # after the build come launch, marketing, customers, improving. Until then
+                          # it stays in the Pulse; built but not launched is listed on the roadmap
+  focus: 3                # at most this many projects in exploring … rollout
+  capacity: 10 h/week
+pulse: { daily: 5, more: true, anonymous: false, kill: true, k: 32 }   # duels per round, keep going
+                          # after a round, votes without names, "Kill it" (drop a project for good; default
+                          # on for personal, off for company workspaces), how far one duel moves a rating
+```
+
 ## vision.md
 
 ```markdown
@@ -96,6 +112,16 @@ id: recurring-jobs
 name: Recurring maintenance jobs
 initiatives: [less-admin-time]
 stage: kickoff        # idea | exploring | prototyping | kickoff | scoped | building | rollout | measuring | done | paused | dropped
+reach: unreleased     # how far it is out in the world, apart from how far it is built:
+                      # unreleased | ready (market-ready) | released (public) | launched (people were told)
+                      # | marketing | customers (first users / paying) | improving (improve, scale, synergies)
+openSource: true      # the code is public; independent of reach (an open-source project can be released,
+                      # launched, or have users and contributors)
+snoozed: 2026-11-19   # Pulse: shelved, out of the duels until that day, then back by itself
+                      # (killed = stage: dropped, never comes back)
+next:                 # the next steps, most important first, at most 3 (one string is fine too);
+  - Release to the beta accounts   # Pulse cards show them, and the Pulse asks for them whenever
+  - Help text for the series dialog  # a project is in the top 3
 priority: high        # urgent | high | medium | low
 size: m               # effort in person-weeks: xs .5 · s 1 · m 2 · l 4 · xl 8
 confidence: medium    # high | medium | low — how sure we are about scope and timing
@@ -442,6 +468,26 @@ offers "compare": it highlights what B adds, removes and changes relative to A
 be picked; mark it `baseline: true` on the option to hide its pick button.
 
 ---
+
+## Pulse — pulse/<YYYY-MM-DD>/<voter>.yaml
+
+What people feel matters most, from duels in the studio (`#/pulse`): two projects, "what is
+more important?", in rounds of `pulse.daily`. The studio writes one file per person and day;
+agents read the ranking with `omgp pulse [--json]`.
+
+```yaml
+voter: Anna
+date: 2026-10-19
+duels:
+  - { win: offline-sync, over: csv-import }
+  - { win: customer-portal, over: offline-sync }
+  - { neither: [csv-import, job-templates] }   # neither matters right now
+```
+
+Every duel is an Elo match, applied in date order (`neither`: both lose to an average project, so
+both drop, the higher-rated one more), so recent days weigh more. Opponents are
+random, so a project from the bottom meets the top and jumps when it wins. Dropped projects
+are left out; done ones too, once they are as far out as `profile.doneMeans`.
 
 ## Results — sessions/<id>.results.json
 

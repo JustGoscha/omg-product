@@ -3,6 +3,9 @@
   import { href, router } from "../lib/router.svelte";
   import { fileUrl } from "../lib/api";
   import { md } from "../lib/md";
+  import { pulse } from "../lib/pulse.svelte";
+  import StatusPicker from "../components/StatusPicker.svelte";
+  import NextTasks from "../components/NextTasks.svelte";
   import PrototypeFrame from "../visuals/PrototypeFrame.svelte";
   import LiveDoc from "../comments/LiveDoc.svelte";
   import StageTrack from "../components/StageTrack.svelte";
@@ -57,6 +60,7 @@
     delegatable: ws?.analysis.delegatable.includes(id),
     conflicts: ws?.analysis.conflicts.filter((c) => c.project === id) ?? [],
   });
+  pulse.start();
 </script>
 
 {#if p && panel}
@@ -82,9 +86,15 @@
         {/each}
       </div>
       <h1>{p.name}</h1>
+      <StatusPicker project={p} />
       {#if p.summary}<p class="lead">{p.summary}</p>{/if}
+      <div class="nexttasks"><NextTasks project={p} /></div>
       <StageTrack project={p} locale={ws?.config.locale} />
       <dl class="facts">
+        {#if pulse.positions.get(p.id)}
+          {@const r = pulse.positions.get(p.id)!}
+          <div><dt><a href={href("/pulse/results")}>{t.pulse.title}</a></dt><dd>#{r.pos} · {r.rating} · {t.pulse.record(r.wins, r.losses)}</dd></div>
+        {/if}
         <div><dt>{t.facts.priority}</dt><dd>{p.priority}</dd></div>
         {#if p.size}<div><dt>{t.facts.size}</dt><dd>{p.size}</dd></div>{/if}
         <div><dt>{t.facts.confidence}</dt><dd>{p.confidence}</dd></div>
@@ -415,5 +425,8 @@
     .cols {
       grid-template-columns: 1fr;
     }
+  }
+  .nexttasks {
+    margin: 1rem 0 0.5rem;
   }
 </style>

@@ -2,6 +2,9 @@
   // Where everything stands: one column per phase, one calm card per project with the
   // one thing that comes next. At most 5 cards per column; the rest behind "+N".
   import { store } from "../lib/store.svelte";
+  import { api } from "../lib/api";
+  import { isStatic } from "../lib/static";
+  import { nextTasks } from "../../../src/core/pulse";
   import { href } from "../lib/router.svelte";
   import { stageColor, stageSoft } from "../lib/stages";
   import { addDays, toDate } from "../../../src/core/time";
@@ -15,6 +18,9 @@
     spanOf,
     order,
     pick,
+    rankOf,
+    focus = 0,
+    dates = true,
   }: {
     projects: ProjectInfo[];
     today: string;
@@ -22,7 +28,11 @@
     spanOf: (p: ProjectInfo) => Span | null;
     order: (a: ProjectInfo, b: ProjectInfo) => number; // how cards are listed
     pick: (a: ProjectInfo, b: ProjectInfo) => number; // which cards make the cut when not all fit
+    rankOf?: (id: string) => number | undefined; // place in the Pulse ranking
+    focus?: number; // the top this many in the Pulse are what we work on; the rest is greyed out
+    dates?: boolean; // false: no dates on the cards (personal workspaces), only live sessions and conflicts
   } = $props();
+  const inFocus = (id: string) => !focus || (rankOf?.(id) ?? Infinity) <= focus;
   const t = $derived(store.t);
   const ws = $derived(store.ws);
 
@@ -33,6 +43,29 @@
     { id: "learn", stages: ["measuring", "done"] },
   ];
   let open = $state<Set<Phase>>(new Set());
+
+  // what to do now: the first task of the most important projects (Pulse ranking), from every
+  // project in focus, also those the board's filter hides (a paused project can be in the top 5)
+  const all = $derived(ws?.projects ?? projects);
+  const doNext = $derived.by(() => {
+    if (!rankOf) return [];
+    const ranking = all.filter((p) => rankOf(p.id) && inFocus(p.id)).sort((a, b) => rankOf(a.id)! - rankOf(b.id)!).map((p) => p.id);
+    return nextTasks(ranking, all, 3).map((x) => ({ ...x, place: rankOf(x.id)! }));
+  });
+
+  // the next tasks as a todo list: ticking one marks it done and takes it off the list
+  let ticking = $state<string | null>(null);
+  async function tick(p: ProjectInfo, k: number) {
+    if (ticking) return;
+    ticking = `${p.id}:${k}`;
+    await new Promise((r) => setTimeout(r, 380));
+    try {
+      await api.patchProject(p.id, { next: (p.next ?? []).filter((_, j) => j !== k) });
+      await store.load();
+    } finally {
+      ticking = null;
+    }
+  }
   const columns = $derived(
     PHASES.map((ph) => {
       const all = projects.filter((p) => ph.stages.includes(p.stage)).sort(order);
@@ -74,6 +107,21 @@
 </script>
 
 <div class="board">
+  {#if doNext.length}
+    <section class="donext" aria-label={t.todo.title}>
+      <h2>{t.todo.title}</h2>
+      {#each doNext as x, k (x.id + x.task)}
+        {@const p = all.find((q) => q.id === x.id)!}
+        <div class="row" class:main={k === 0}>
+          <button class="tick" class:main={k === 0} class:going={ticking === `${p.id}:0`} disabled={isStatic} title={t.todo.done} onclick={() => tick(p, 0)}>
+            <span class="box-ico" aria-hidden="true"></span>
+            <span class="task">{x.task}</span>
+          </button>
+          <a class="from" href={href(`/p/${p.id}`)}>#{x.place} {p.name}</a>
+        </div>
+      {/each}
+    </section>
+  {/if}
   {#each columns as col}
     <section class="col" aria-label={t.rm.phases[col.id]}>
       <header>
@@ -85,16 +133,29 @@
           {#each col.shown as p (p.id)}
             {@const n = next(p)}
             {@const i = initiative(p)}
-            <li>
+            <li class="box" class:waits={!inFocus(p.id)} class:focus={focus && inFocus(p.id)}>
               <a class="card" href={href(`/p/${p.id}`)}>
                 <span class="top">
                   <span class="stage" style="--s:{stageColor(p.stage)};--sb:{stageSoft(p.stage)}">{t.rm.stages[p.stage] ?? p.stage}</span>
                   {#if p.priority === "urgent"}<span class="prio" title={p.priority}>!!</span>{/if}
+                  {#if rankOf?.(p.id)}<span class="rank" title={t.pulse.title}>{focus && inFocus(p.id) ? "🎯 " : ""}#{rankOf(p.id)}</span>{/if}
                 </span>
                 <span class="name">{p.name}</span>
-                {#if n}<span class="next {n.tone ?? ''}">{n.text}</span>{/if}
+                {#if n && (n.tone === "live" || n.tone === "bad" || (dates && (n.tone || !p.next?.length)))}<span class="next {n.tone ?? ''}">{n.text}</span>{/if}
                 {#if i}<span class="init"><i style="background:{i.color ?? 'var(--ink-3)'}"></i>{i.name}</span>{/if}
               </a>
+              {#if p.next?.length && inFocus(p.id)}
+                <ul class="todo" aria-label={t.nextMove}>
+                  {#each p.next as task, k (task)}
+                    <li>
+                      <button class="tick" class:going={ticking === `${p.id}:${k}`} disabled={isStatic} title={t.todo.done} onclick={() => tick(p, k)}>
+                        <span class="box-ico" aria-hidden="true"></span>
+                        <span class="task" class:first={k === 0}>{task}</span>
+                      </button>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
             </li>
           {/each}
         </ul>
@@ -112,6 +173,13 @@
 {/if}
 
 <style>
+  .rank {
+    margin-left: auto;
+    font-family: var(--font-code);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--should);
+  }
   .board {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -154,22 +222,155 @@
     display: grid;
     gap: 0.6rem;
   }
+  .box {
+    border-radius: var(--r-card);
+    background: var(--card);
+    border: 1.5px solid var(--line);
+    transition: border-color 0.15s;
+    overflow: hidden;
+  }
+  .box:hover {
+    border-color: var(--ink-3);
+  }
+  /* focus: the top projects in full colour, everything else waits in grey */
+  .box.focus {
+    border-color: var(--should-soft);
+    box-shadow: 0 8px 22px -14px rgba(47, 138, 91, 0.45);
+  }
+  .box.waits {
+    opacity: 0.38;
+    filter: grayscale(1);
+    transition: opacity 0.2s, filter 0.2s, border-color 0.15s;
+  }
+  .box.waits:hover {
+    opacity: 0.85;
+    filter: none;
+  }
   .card {
     display: grid;
     gap: 0.3rem;
     padding: 0.8rem 0.9rem 0.85rem;
-    border-radius: var(--r-card);
-    background: var(--card);
-    border: 1.5px solid var(--line);
     text-decoration: none;
     color: var(--ink);
-    transition: border-color 0.15s, transform 0.1s;
-  }
-  .card:hover {
-    border-color: var(--ink-3);
+    transition: transform 0.1s;
   }
   .card:active {
     transform: translateY(1px);
+  }
+  /* do next: the first tasks of the most important projects, across the board */
+  .donext {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 0.15rem;
+    padding: 0.9rem 1rem 0.8rem;
+    border-radius: var(--r-card);
+    background: linear-gradient(160deg, #ffffff 0%, #f1f5f2 100%);
+    border: 1.5px solid var(--should-soft);
+    box-shadow: 0 10px 30px -18px rgba(27, 36, 48, 0.35);
+  }
+  .donext h2 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--should);
+    margin: 0 0 0.2rem 0.4rem;
+  }
+  .donext .row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .donext .tick {
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+  }
+  .donext .tick.main .task {
+    font-size: 1.15rem;
+    font-weight: 750;
+    color: var(--ink);
+  }
+  .donext .tick.main .box-ico {
+    width: 1.3rem;
+    height: 1.3rem;
+    margin-top: 0;
+  }
+  .from {
+    flex-shrink: 0;
+    padding-right: 0.4rem;
+    font-size: 0.8rem;
+    font-weight: 650;
+    color: var(--ink-3);
+    text-decoration: none;
+  }
+  .from:hover {
+    color: var(--ink);
+    text-decoration: underline;
+  }
+  /* next tasks: a todo list under the card */
+  .todo {
+    list-style: none;
+    margin: 0;
+    padding: 0.15rem 0.5rem 0.55rem;
+    border-top: 1px dashed var(--line);
+    display: grid;
+  }
+  .tick {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    width: 100%;
+    padding: 0.35rem 0.4rem;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    font: inherit;
+    text-align: left;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .tick:hover {
+    background: var(--paper);
+  }
+  .box-ico {
+    flex-shrink: 0;
+    width: 1rem;
+    height: 1rem;
+    margin-top: 0.1rem;
+    border-radius: 5px;
+    border: 1.5px solid var(--ink-3);
+    background: var(--card);
+    box-shadow: inset 1px 1px 2px rgba(27, 36, 48, 0.12);
+    display: grid;
+    place-items: center;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .tick:hover .box-ico {
+    border-color: var(--should);
+  }
+  .tick.going .box-ico {
+    background: var(--should);
+    border-color: var(--should);
+  }
+  .tick.going .box-ico::after {
+    content: "✓";
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .task {
+    font-size: 0.86rem;
+    line-height: 1.35;
+    transition: color 0.2s, opacity 0.3s;
+  }
+  .task.first {
+    color: var(--ink);
+    font-weight: 650;
+  }
+  .tick.going .task {
+    text-decoration: line-through;
+    opacity: 0.45;
   }
   .top {
     display: flex;

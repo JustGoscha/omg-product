@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { checkpointValues, scaleValues, triageScales } from "./scales.ts";
+import { reaches } from "./pulse.ts";
 
 // The file format lives in skills/omgp/references/format.md. Keep both in sync.
 
@@ -25,6 +26,7 @@ export const stages = [
   "dropped",
 ] as const;
 export const sizes = ["xs", "s", "m", "l", "xl"] as const;
+export { reaches } from "./pulse.ts";
 export const triageValues = ["must", "should", "nice", "no"] as const;
 export const phases = ["context", "problem", "solution", "decisions", "wrapup"] as const;
 
@@ -326,6 +328,32 @@ export const ProductConfig = z.object({
       concurrency: z.number().int().min(1).max(4).default(1),
     })
     .optional(),
+  // who this workspace is for and what counts, written by the omgp-onboard interview
+  profile: z
+    .object({
+      kind: z.enum(["personal", "company"]).optional(),
+      goals: strList.optional(),
+      // a project only counts as done once it is this far out in the world; never: nothing is
+      // ever done, after the build come launch, marketing, customers, improving
+      doneMeans: z.enum([...reaches, "never"]).optional(),
+      // at most this many projects in exploring … rollout at once
+      focus: z.number().int().min(1).optional(),
+      capacity: text.optional(),
+    })
+    .optional(),
+  // the swipe deck: cards per round, whether people may keep going after a round, votes
+  // without names, how far one day moves a rating
+  pulse: z
+    .object({
+      daily: z.number().int().min(1).optional(),
+      more: z.boolean().optional(),
+      // "Kill it": drop a project from the pulse for good. Default: on for personal workspaces,
+      // off for companies (one person shouldn't drop what a team decides)
+      kill: z.boolean().optional(),
+      anonymous: z.boolean().optional(),
+      k: z.number().positive().optional(),
+    })
+    .optional(),
 });
 
 // where a date comes from: copied from Linear, set by hand (roadmap drag), or an agent's estimate
@@ -365,6 +393,16 @@ export const Project = z.object({
   initiatives: strList.default([]),
   stage: z.enum(stages).default("idea"),
   priority: z.enum(["urgent", "high", "medium", "low"]).default("medium"),
+  reach: z.enum(reaches).optional(),
+  // public code: open source can be at any reach (released on GitHub, launched, with users and contributors)
+  openSource: z.boolean().optional(),
+  // Pulse: shelved until a day (out of the duels till then, then back by itself)
+  snoozed: timeValue.optional(),
+  // the next steps, most important first, at most 3: "Landing page", "Post in r/animation"
+  next: z
+    .union([text, z.array(z.coerce.string())])
+    .transform((v) => (Array.isArray(v) ? v : [v]).map((s) => s.trim()).filter(Boolean).slice(0, 3))
+    .optional(),
   size: z.enum(sizes).optional(),
   confidence: z.enum(["high", "medium", "low"]).default("medium"),
   stream: z.string().optional(),

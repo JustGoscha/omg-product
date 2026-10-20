@@ -1,5 +1,6 @@
 import type { ProductConfigT } from "./schema.ts";
 import { addDays, daysBetween, sizeWeeks, weekStart, type Span } from "./time.ts";
+import { reachIndex } from "./pulse.ts";
 
 interface ProjectLike {
   id: string;
@@ -8,6 +9,7 @@ interface ProjectLike {
   priority: string;
   size?: string;
   stream?: string;
+  reach?: string;
   span: Span | null;
   dependsOn: { on: string; kind: string; note?: string }[];
 }
@@ -19,6 +21,10 @@ export interface Analysis {
   delegatable: string[];
   overload: { stream: string; from: string; to: string; peak: number; capacity: number; projects: string[] }[];
   unscheduled: string[];
+  /** built, but not launched yet (or not as far out as profile.doneMeans asks) */
+  notOut: string[];
+  /** more projects in progress than profile.focus allows */
+  unfocused: { active: string[]; focus: number } | null;
   load: Record<string, { week: string; load: number }[]>;
 }
 
@@ -147,5 +153,16 @@ export function analyze(input: { today: string; config: ProductConfigT; projects
     .filter((p) => !p.span && (p.priority === "urgent" || p.priority === "high") && p.stage !== "paused")
     .map((p) => p.id);
 
-  return { conflicts, cycles, bottlenecks, delegatable, overload, unscheduled, load };
+  // built is not out in the world: built projects that are not launched yet. Only with a profile
+  // (the onboarding), without one a company workspace's rollout stages say enough.
+  const doneMeans = config.profile?.doneMeans;
+  const bar = reachIndex(!doneMeans || doneMeans === "never" ? "launched" : doneMeans);
+  const notOut = config.profile
+    ? projects.filter((p) => ["rollout", "measuring", "done"].includes(p.stage) && reachIndex(p.reach) < bar).map((p) => p.id)
+    : [];
+  const inProgress = projects.filter((p) => ["exploring", "prototyping", "kickoff", "scoped", "building", "rollout"].includes(p.stage)).map((p) => p.id);
+  const focus = config.profile?.focus;
+  const unfocused = focus && inProgress.length > focus ? { active: inProgress, focus } : null;
+
+  return { conflicts, cycles, bottlenecks, delegatable, overload, unscheduled, notOut, unfocused, load };
 }

@@ -14,17 +14,24 @@ import { linearPull } from "./linear.ts";
 import { checkPrototype, formatCheck, prototypeTargets } from "../core/proto-check.ts";
 import * as tpl from "./templates.ts";
 import { exportStatic } from "./export.ts";
+import { loadPulse, pulseProjects } from "../core/pulse-files.ts";
+import { localDate, nextTasks, rank } from "../core/pulse.ts";
 
 const HELP = `omgp — product harness: roadmap, prototypes and decision sessions as files
 
   omgp init [dir] [--name "Product"]   scaffold a workspace
   omgp serve [--port 4747] [--host 0.0.0.0]   studio with live reload
+             [--hosted] [--key k] [--data dir]
+                                       for a team: read-only but the pulse, only via the link /k/<key>,
+                                       duels written to <dir>/pulse (env OMGP_HOSTED, OMGP_KEY, OMGP_DATA, PORT)
   omgp validate [--json]               check files and references (exit 1 on errors)
   omgp check <project> [prototype] [--shots] [--state a,b]
                                        open the project's prototypes in headless Chrome, visit every #state its
                                        sessions use, report script errors, blank pages and missing focus targets;
                                        --shots saves a PNG per state to .omgp/shots to look at (exit 1 on problems)
   omgp roadmap [--json]                conflicts, bottlenecks, overload, delegatable work
+  omgp pulse [--voter name] [--json]   what people swiped as most important (Elo, studio: #/pulse)
+  omgp next [--json]                   what to do now: the first open task of the most important projects
   omgp status [project]                project and session progress
   omgp new project <id> --name "…" [--initiative id] [--stage idea]
   omgp new session <project> <id> [--title "…"] [--kind kickoff]
@@ -155,7 +162,16 @@ async function main() {
 
   if (cmd === "serve") {
     const { serve } = await import("../server/server.ts");
-    serve({ root, port: Number(str(flags.port) ?? process.env.OMGP_PORT ?? 4747), host: str(flags.host) ?? "127.0.0.1" });
+    const env = process.env;
+    const hosted = !!flags.hosted || !!env.OMGP_HOSTED;
+    serve({
+      root,
+      port: Number(str(flags.port) ?? env.OMGP_PORT ?? env.PORT ?? 4747),
+      host: str(flags.host) ?? (hosted ? "0.0.0.0" : "127.0.0.1"),
+      hosted,
+      key: str(flags.key) ?? env.OMGP_KEY ?? undefined,
+      data: str(flags.data) ?? env.OMGP_DATA ?? undefined,
+    });
     return;
   }
 
@@ -213,6 +229,8 @@ async function main() {
   }
 
   if (cmd === "roadmap") return printRoadmap(ws, !!flags.json);
+  if (cmd === "pulse") return printPulse(root, ws, str(flags.voter), !!flags.json);
+  if (cmd === "next") return printNext(root, ws, !!flags.json);
   if (cmd === "status") return printStatus(ws, pos[1]);
 
   if (cmd === "new") {
@@ -395,6 +413,35 @@ function printRoadmap(ws: Workspace, asJson: boolean) {
   section("Overloaded streams", a.overload.map((o) => `${o.stream} ${o.from}…${o.to}: load ${o.peak} > capacity ${o.capacity} (${o.projects.map(name).join(", ")})`));
   section("High priority, not scheduled", a.unscheduled.map(name));
   section("Can be handed to one person (no hard/tight links)", a.delegatable.map(name));
+}
+
+function printNext(root: string, ws: Workspace, asJson: boolean) {
+  // only from the focus: the top profile.focus projects (default 3) that were in a duel
+  const ranking = rank(loadPulse(root), pulseProjects(ws), { today: localDate(), k: ws.config.pulse?.k })
+    .filter((r) => r.wins + r.losses > 0)
+    .slice(0, ws.config.profile?.focus ?? 3)
+    .map((r) => r.id);
+  const tasks = nextTasks(ranking, ws.projects, 3);
+  if (asJson) return console.log(JSON.stringify(tasks.map((x) => ({ ...x, project: ws.projects.find((p) => p.id === x.id)?.name })), null, 2));
+  if (!tasks.length) return console.log("No next tasks yet. Finish a Pulse round: it asks the top 3 projects for theirs.");
+  tasks.forEach((x, i) => {
+    const name = ws.projects.find((p) => p.id === x.id)?.name ?? x.id;
+    console.log(i === 0 ? `${c.bold("Do next:")} ${x.task}  ${c.dim(`— ${name}, #${x.place} in the Pulse`)}` : c.dim(`   then:  ${x.task}  — ${name}, #${x.place}`));
+  });
+}
+
+function printPulse(root: string, ws: Workspace, voter: string | undefined, asJson: boolean) {
+  const days = loadPulse(root);
+  const ranked = rank(days, pulseProjects(ws), { today: localDate(), voter, k: ws.config.pulse?.k });
+  const people = new Set(days.map((d) => d.voter)).size;
+  const duels = days.reduce((n, d) => n + d.duels.length, 0);
+  if (asJson) return console.log(JSON.stringify({ people, duels, ranked }, null, 2));
+  console.log(c.bold(`Pulse${voter ? ` (${voter})` : ""}`) + c.dim(`  ${people} ${people === 1 ? "person" : "people"}, ${duels} duels`));
+  ranked.forEach((r, i) => {
+    const p = ws.projects.find((p) => p.id === r.id)!;
+    const delta = r.delta > 0 ? c.green(`▲${r.delta}`.padEnd(5)) : r.delta < 0 ? c.red(`▼${-r.delta}`.padEnd(5)) : c.dim("·".padEnd(5));
+    console.log(`${String(i + 1).padStart(3)}. ${String(r.rating).padStart(4)} ${delta} ${p.name}${r.split ? c.yellow("  ⚡ split") : ""}  ${c.dim(`${r.wins}–${r.losses}`)}`);
+  });
 }
 
 function printStatus(ws: Workspace, projectId?: string) {
