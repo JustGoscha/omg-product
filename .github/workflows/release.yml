@@ -1,0 +1,28 @@
+# Builds the plugin on every push to main and publishes it to the `release` branch,
+# which the marketplace points at. Installed plugins pick up the new commit by auto-update.
+name: release
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+concurrency: release
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bun test
+      - run: bun run build
+      - name: Publish to the release branch
+        run: |
+          echo "{\"commit\": \"${GITHUB_SHA}\", \"built\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > dist/version.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan release-build
+          git add -f dist
+          git commit -m "release ${GITHUB_SHA::7}"
+          git push -f origin HEAD:release

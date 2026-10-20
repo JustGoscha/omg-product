@@ -1,0 +1,12 @@
+/* Visual language for prototypes. Link with ../../../brand/tokens.css */
+:root {
+  --color-bg: #ffffff;
+  --color-surface: #f6f7f9;
+  --color-text: #15171c;
+  --color-muted: #5f6673;
+  --color-primary: #3b5bdb;
+  --color-danger: #d9480f;
+  --radius: 8px;
+  --font-body: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+body { margin: 0; font-family: var(--font-body); color: var(--color-text); background: var(--color-bg); }

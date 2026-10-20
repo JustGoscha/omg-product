@@ -1,0 +1,92 @@
+/* Shared look of the structured diagrams. Imported by each diagram component. */
+.diagram {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  font-family: var(--font-ui);
+}
+.diagram text {
+  fill: var(--ink);
+}
+.diagram .label {
+  font-size: 14px;
+  font-weight: 650;
+}
+.diagram .small {
+  font-size: 12px;
+  fill: var(--ink-3);
+}
+.diagram .code {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+}
+.diagram .edge {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-width: 1.6;
+}
+.diagram .edge.dashed {
+  stroke-dasharray: 5 4;
+}
+.diagram .edge-label rect {
+  fill: var(--paper);
+  stroke: var(--line);
+}
+.diagram .edge-label text {
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--ink-2);
+}
+.diagram .node rect,
+.diagram .node path {
+  fill: var(--card);
+  stroke: var(--ink);
+  stroke-width: 1.6;
+}
+
+/* diff states */
+.diagram .added rect,
+.diagram .added path.shape {
+  fill: var(--added-soft);
+  stroke: var(--added);
+  stroke-width: 2.2;
+}
+.diagram .changed rect,
+.diagram .changed path.shape {
+  fill: var(--changed-soft);
+  stroke: var(--changed);
+  stroke-width: 2.2;
+}
+.diagram .removed {
+  opacity: 0.75;
+}
+.diagram .removed rect,
+.diagram .removed path.shape {
+  fill: var(--removed-soft);
+  stroke: var(--removed);
+  stroke-dasharray: 5 4;
+}
+.diagram .removed text.label {
+  text-decoration: line-through;
+}
+.diagram .edge.added {
+  stroke: var(--added);
+  stroke-width: 2.4;
+}
+.diagram .edge.changed {
+  stroke: var(--changed);
+  stroke-width: 2.4;
+}
+.diagram .edge.removed {
+  stroke: var(--removed);
+  stroke-dasharray: 5 4;
+}
+.diagram .tag rect {
+  stroke: none;
+}
+.diagram .tag text {
+  font-size: 10.5px;
+  font-weight: 700;
+  fill: #fff;
+}

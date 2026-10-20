@@ -1,0 +1,9 @@
+{
+  "name": "omgp",
+  "description": "Product work as plain files: roadmap, prototypes and decision sessions, a local studio to run meetings, and skills for any coding agent.",
+  "author": { "name": "Goscha Graf", "url": "https://github.com/JustGoscha" },
+  "homepage": "https://justgoscha.github.io/omg-product/",
+  "repository": "https://github.com/JustGoscha/omg-product",
+  "license": "MIT",
+  "keywords": ["product management", "roadmap", "kickoff", "prototype", "decisions", "facilitation"]
+}
