@@ -13,7 +13,8 @@ import { Runner, describeAgent } from "../core/agent-runner.ts";
 import { linearPull } from "./linear.ts";
 import { checkPrototype, formatCheck, prototypeTargets } from "../core/proto-check.ts";
 import * as tpl from "./templates.ts";
-import { exportStatic } from "./export.ts";
+import { exportStatic, prepareForArtifact } from "./export.ts";
+import { ARTIFACT_CAPABILITIES } from "../../web/src/lib/artifact.ts";
 import { loadPulse, pulseProjects } from "../core/pulse-files.ts";
 import { localDate, nextTasks, rank } from "../core/pulse.ts";
 
@@ -53,7 +54,8 @@ const HELP = `omgp — product harness: roadmap, prototypes and decision session
                                        add a team rule to rules.md (agents follow it over the skills);
                                        --upstream prints a proposal for the shared omgp skills instead
   omgp skills install [--target claude|agents|opencode|pi] [--dir path] [--link]
-  omgp export [--out dir]              static read-only studio of the workspace (a demo for any static host)
+  omgp export [--out dir] [--artifact] static studio of the workspace: for any static host, or (--artifact)
+                                       ready to publish as a claude.ai Artifact where the pulse is shared
   omgp update                          update a git checkout of omgp (the Claude Code plugin updates itself)
   omgp version
 
@@ -225,6 +227,10 @@ async function main() {
   if (cmd === "export") {
     const out = resolve(str(flags.out) ?? "omgp-export");
     const r = exportStatic(root, out);
+    if (flags.artifact) {
+      const n = prepareForArtifact(out, ARTIFACT_CAPABILITIES);
+      return console.log(`claude.ai Artifact in ${r.outDir}: index.html plus ${n} files, capabilities and file list in artifact.json. An agent publishes it; the pulse then runs on the page's shared db.`);
+    }
     return console.log(`static read-only studio in ${r.outDir} (${r.projects} projects, ${r.sessions} sessions). Serve the folder with any static host.`);
   }
 

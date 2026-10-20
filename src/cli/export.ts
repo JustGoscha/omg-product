@@ -11,7 +11,7 @@ import { loadPulse } from "../core/pulse-files.ts";
 //   index.html, assets/        the built studio (dist/web), with window.__OMGP_STATIC__ set
 //   api/<endpoint>.json        what each GET endpoint the studio reads would answer
 //   files/<workspace path>     the workspace files; HTML with the annotate layer, as for ?omgp=1
-//   __omgp/annotate.js         that layer
+//   omgp-layer/annotate.js         that layer
 //   static.json                what was exported, and the marker that lets a re-export replace the folder
 //
 // All URLs are relative, so it works under a sub-path (/<repo>/). The studio reads the
@@ -87,7 +87,7 @@ export function writeSnapshots(root: string, outDir: string): ExportSummary {
   write("api/pulse.json", { days: loadPulse(root) });
 
   // workspace files (prototypes, images, brand css, handoff.md), HTML with the annotate layer
-  write("__omgp/annotate.js", readFileSync(ANNOTATE_JS, "utf8"));
+  write("omgp-layer/annotate.js", readFileSync(ANNOTATE_JS, "utf8"));
   let files = 0;
   for (const rel of workspaceFiles(root, outDir)) {
     const from = join(root, rel);
@@ -95,7 +95,7 @@ export function writeSnapshots(root: string, outDir: string): ExportSummary {
     mkdirSync(dirname(to), { recursive: true });
     if (rel.toLowerCase().endsWith(".html")) {
       const up = "../".repeat(relative(outDir, dirname(to)).split(sep).length);
-      writeFileSync(to, withAnnotate(readFileSync(from, "utf8"), `${up}__omgp/annotate.js`));
+      writeFileSync(to, withAnnotate(readFileSync(from, "utf8"), `${up}omgp-layer/annotate.js`));
     } else copyFileSync(from, to);
     files++;
   }
@@ -164,4 +164,37 @@ function stale(index: string) {
   };
   // the studio imports src/core (schema, ops, labels)
   return ["web", join("src", "core"), "vite.config.ts", "package.json"].some((p) => newer(join(PKG_ROOT, p)));
+}
+
+/**
+ * Make an export publishable as a claude.ai Artifact: the page without its own document
+ * skeleton (the host adds one), no files the host refuses (fallback font formats, dotfiles),
+ * no literal U+FFFD in scripts, and artifact.json listing the capabilities and files to publish.
+ * The pulse then runs on the page's shared db (web/src/lib/artifact.ts).
+ */
+export function prepareForArtifact(outDir: string, capabilities: Record<string, unknown>) {
+  const index = join(outDir, "index.html");
+  const html = readFileSync(index, "utf8");
+  const head = (html.match(/<head>([\s\S]*)<\/head>/)?.[1] ?? "").replace(/<meta (charset|name="viewport")[^>]*>\s*/g, "");
+  const body = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? "";
+  writeFileSync(index, `${head.trim()}\n${body.trim()}\n`);
+  const files: { path: string; contentType?: string }[] = [];
+  const walk = (dir: string, rel = "") => {
+    for (const name of readdirSync(dir)) {
+      const path = rel ? `${rel}/${name}` : name;
+      const abs = join(dir, name);
+      if (statSync(abs).isDirectory()) walk(abs, path);
+      else if (name.startsWith(".") || /\.(ttf|woff)$/.test(name)) rmSync(abs);
+      else if (path !== "index.html") {
+        if (/\.(js|css)$/.test(name)) {
+          const src = readFileSync(abs, "utf8");
+          if (src.includes("\ufffd")) writeFileSync(abs, src.replaceAll("\ufffd", "\\uFFFD"));
+        }
+        files.push(/\.(ya?ml)$/.test(name) ? { path, contentType: "text/plain" } : { path });
+      }
+    }
+  };
+  walk(outDir);
+  writeFileSync(join(outDir, "artifact.json"), JSON.stringify({ page: "index.html", capabilities, files }, null, 2));
+  return files.length;
 }

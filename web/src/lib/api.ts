@@ -4,6 +4,7 @@ import type { AnchoredThread } from "../../../src/core/comments";
 import type { Heartbeat } from "../../../src/core/requests";
 import { applyLocalOp, isStatic, localAnswered, localPulse, localResults, rememberExported, saveLocalPulse, snapshotPath } from "./static";
 import { addDuel, type PulseDay } from "../../../src/core/pulse";
+import { artifactDb, artifactDuel, artifactMe, artifactPulse } from "./artifact";
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public conflict = false) {
@@ -67,12 +68,21 @@ export const api = {
   editStep: (project: string, session: string, step: string, edit: { path: (string | number)[]; value: unknown; expect?: unknown }) =>
     call<{ ok: true }>(`/api/session/${enc(project)}/${enc(session)}/step/${enc(step)}`, { method: "PATCH", body: JSON.stringify(edit) }),
   // the static demo keeps swipes in this browser, on top of the exported ones
+  // as a claude.ai Artifact the pulse is shared through the page's db, everyone votes as themselves
   pulse: async () => {
+    const db = isStatic ? await artifactDb() : null;
     const d = await call<{ days: PulseDay[] }>("/api/pulse");
+    // the duels exported from the workspace files, plus everyone's on this page
+    if (db) return { days: [...d.days, ...(await artifactPulse(db))] };
     return isStatic ? { days: localPulse<PulseDay[]>() ?? d.days } : d;
   },
   pulseDuel: async (v: { voter: string; date: string; win: string; over: string; neither?: boolean; undo?: boolean }) => {
     if (!isStatic) return call<{ days: PulseDay[] }>("/api/pulse", { method: "POST", body: JSON.stringify(v) });
+    const [db, me] = isStatic ? await Promise.all([artifactDb(), artifactMe()]) : [null, null];
+    if (db && me) {
+      const exported = (await call<{ days: PulseDay[] }>("/api/pulse")).days;
+      return { days: [...exported, ...(await artifactDuel(db, me, v.date, { win: v.win, over: v.over, neither: v.neither }, v.undo))] };
+    }
     const base = localPulse<PulseDay[]>() ?? (await call<{ days: PulseDay[] }>("/api/pulse")).days;
     const days = addDuel(base, v.voter, v.date, { win: v.win, over: v.over, neither: v.neither }, v.undo);
     saveLocalPulse(days);

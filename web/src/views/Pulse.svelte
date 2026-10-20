@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { artifactMe } from "../lib/artifact";
   // Pulse: "what is more important?", two projects at a time, in rounds of a few duels.
   // Phone first: people open #/pulse with their coffee, decide five duels, see the ranking.
   import { store } from "../lib/store.svelte";
@@ -32,7 +33,10 @@
       return `anon-${crypto.randomUUID().slice(0, 8)}`;
     }
   }
-  const voter = $derived(anonymous ? deviceId() : store.author);
+  // hosted as a claude.ai Artifact, the viewer votes as themselves
+  let artifactVoter = $state<string | null>(null);
+  artifactMe().then((id) => (artifactVoter = id));
+  const voter = $derived(artifactVoter ?? (anonymous ? deviceId() : store.author));
 
   async function load() {
     try {
@@ -175,7 +179,7 @@
 
   {#if error}<p class="err">{error}</p>{/if}
 
-  {#if ws && !anonymous && !store.author}
+  {#if ws && !anonymous && !store.author && !artifactVoter}
     <form class="who" onsubmit={(e) => (e.preventDefault(), name.trim() && store.setAuthor(name.trim()))}>
       <h1>{t.pulse.who}</h1>
       <p class="muted">{t.pulse.hint}</p>
