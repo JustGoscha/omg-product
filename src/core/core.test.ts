@@ -194,3 +194,7 @@ test("Problem and Solution are taken from a Linear description", () => {
   expect(problemSolution(md)).toEqual({ problem: "PLs finden Mails nicht.", solution: "Eine Adresse pro Projekt." });
   expect(problemSolution("just text")).toEqual({});
 });
+
+test("Problem on the same line as its bold label, solution under Zielbild", () => {
+  expect(problemSolution("**Problem:** Einkäufer sehen keine Preise.\n\n## Zielbild\nPreise je Position.")).toEqual({ problem: "Einkäufer sehen keine Preise.", solution: "Preise je Position." });
+});

@@ -178,7 +178,7 @@ export function applyLinear(ws: Workspace, data: LinearData, dryRun: boolean, ba
 // Problem and Solution as Linear descriptions write them: a heading (any level) or a bold
 // line, in German or English. Everything until the next heading belongs to it.
 const PROBLEM = /^(das\s+)?(problem(stellung)?|pain|warum|why)\b/i;
-const SOLUTION = /^(die\s+)?(lösung(sansatz)?|loesung|solution|ansatz|approach)\b/i;
+const SOLUTION = /^(die\s+)?(lösung(sansatz)?|loesung|solution|ansatz|approach|zielbild|how)\b/i;
 export function problemSolution(md: string | null | undefined): { problem?: string; solution?: string } {
   const out: { problem?: string; solution?: string } = {};
   let key: "problem" | "solution" | null = null;
@@ -189,11 +189,13 @@ export function problemSolution(md: string | null | undefined): { problem?: stri
     buf = [];
   };
   for (const line of (md ?? "").split("\n")) {
-    const h = line.match(/^\s*(?:#{1,6}\s+|\*\*)(.+?)(?:\*\*)?\s*:?\s*$/);
+    // "## Problem", or "**Problem:** text" where the text may follow on the same line
+    const h = line.match(/^\s*#{1,6}\s+(.+?)\s*:?\s*$/) ?? line.match(/^\s*\*\*(.+?):?\*\*:?\s*(.*)$/);
     if (h) {
       flush();
       const title = h[1].replace(/[*:]/g, "").trim();
       key = PROBLEM.test(title) ? "problem" : SOLUTION.test(title) ? "solution" : null;
+      if (key && h[2]?.trim()) buf.push(h[2].trim());
     } else if (key) buf.push(line);
   }
   flush();
