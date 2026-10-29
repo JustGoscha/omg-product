@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { checkpointScope } from "./checkpoint.ts";
+import { markUnclear, unclearCounts } from "./pulse.ts";
+import { problemSolution } from "../cli/linear.ts";
 import { join } from "node:path";
 import { parseTime, resolveSpan } from "./time.ts";
 import { analyze } from "./analysis.ts";
@@ -174,4 +176,21 @@ test("a checkpoint sums up its part of the meeting", () => {
   expect(checkpointScope(steps, 5)).toEqual([3, 4]);
   expect(checkpointScope(steps, 6)).toEqual([1, 3, 4]);
   expect(checkpointScope(steps, 1)).toEqual([]);
+});
+
+test("'I don't get it' counts each person once and can be taken back", () => {
+  let days = markUnclear([], "Ana", "2026-10-29", "a");
+  days = markUnclear(days, "Ana", "2026-10-30", "a");
+  days = markUnclear(days, "Ben", "2026-10-29", "a");
+  days = markUnclear(days, "Ben", "2026-10-29", "b");
+  expect(unclearCounts(days).get("a")).toBe(2);
+  days = markUnclear(days, "Ben", "2026-10-29", "a", true);
+  expect(unclearCounts(days).get("a")).toBe(1);
+  expect(unclearCounts(days).get("b")).toBe(1);
+});
+
+test("Problem and Solution are taken from a Linear description", () => {
+  const md = "Kurz worum es geht.\n\n## Problem\nPLs finden Mails nicht.\n\n**Lösung:**\nEine Adresse pro Projekt.\n\n### Scope\nNur Stufe 1.";
+  expect(problemSolution(md)).toEqual({ problem: "PLs finden Mails nicht.", solution: "Eine Adresse pro Projekt." });
+  expect(problemSolution("just text")).toEqual({});
 });

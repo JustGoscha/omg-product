@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { listDir, parseYaml, writeText, yamlStringify } from "./files.ts";
-import { addDuel, inPulse, isDuel, voterSlug, type Duel, type PulseDay } from "./pulse.ts";
+import { addDuel, inPulse, isDuel, markUnclear, voterSlug, type Duel, type PulseDay } from "./pulse.ts";
 import type { Workspace } from "./workspace.ts";
 
 // pulse/<YYYY-MM-DD>/<voter>.yaml, one file per person and day, the duels in order:
@@ -29,7 +29,9 @@ export function loadPulse(root: string): PulseDay[] {
       try {
         const raw = parseYaml(readFileSync(join(root, "pulse", date, file), "utf8")) as { voter?: unknown; duels?: unknown } | null;
         const duels = (Array.isArray(raw?.duels) ? raw.duels : []).map(fromFile).filter(isDuel);
-        days.push({ voter: String(raw?.voter ?? file.replace(/\.yaml$/, "")), date, duels });
+        const u = (raw as { unclear?: unknown })?.unclear;
+        const unclear = Array.isArray(u) ? u.map(String) : [];
+        days.push({ voter: String(raw?.voter ?? file.replace(/\.yaml$/, "")), date, duels, ...(unclear.length ? { unclear } : {}) });
       } catch {
         /* a broken file counts as no duels */
       }
@@ -43,9 +45,27 @@ export function savePulseDuel(root: string, voter: string, date: string, duel: D
   if (!isDuel(duel)) throw new Error("a duel is { win, over } with two different projects");
   const path = join(root, "pulse", date, `${voterSlug(voter)}.yaml`);
   const before = existsSync(path) ? loadPulse(root).filter((d) => d.date === date && voterSlug(d.voter) === voterSlug(voter)) : [];
-  const day = addDuel(before, voter, date, duel, undo)[0];
+  writeDay(path, addDuel(before, voter, date, duel, undo)[0], date);
+}
+
+export function savePulseUnclear(root: string, voter: string, date: string, project: string, undo = false) {
+  if (!DATE.test(date)) throw new Error("date must be YYYY-MM-DD");
+  const path = join(root, "pulse", date, `${voterSlug(voter)}.yaml`);
+  const before = existsSync(path) ? loadPulse(root).filter((d) => d.date === date && voterSlug(d.voter) === voterSlug(voter)) : [];
+  writeDay(path, markUnclear(before, voter, date, project, undo)[0], date);
+}
+
+function writeDay(path: string, day: PulseDay | undefined, date: string) {
   if (!day) return rmSync(path, { force: true });
-  writeText(path, yamlStringify({ voter: day.voter, date, duels: day.duels.map((d) => (d.neither ? { neither: [d.win, d.over] } : { win: d.win, over: d.over })) }));
+  writeText(
+    path,
+    yamlStringify({
+      voter: day.voter,
+      date,
+      duels: day.duels.map((d) => (d.neither ? { neither: [d.win, d.over] } : { win: d.win, over: d.over })),
+      ...(day.unclear?.length ? { unclear: day.unclear } : {}),
+    }),
+  );
 }
 
 /** Projects that are in the pulse (see inPulse). */

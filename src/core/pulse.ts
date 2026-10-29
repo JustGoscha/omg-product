@@ -52,6 +52,8 @@ export interface PulseDay {
   voter: string;
   date: string;
   duels: Duel[];
+  /** "I don't get it": projects this person couldn't judge, so they're not ready to be ranked */
+  unclear?: string[];
 }
 
 export interface Ranked {
@@ -228,7 +230,23 @@ export function addDuel(days: PulseDay[], voter: string, date: string, duel: Due
     if (j >= 0) day.duels.splice(j, 1);
   } else day.duels.push(duel.neither ? { win: duel.win, over: duel.over, neither: true } : { win: duel.win, over: duel.over });
   const rest = days.filter((_, j) => j !== i);
-  return day.duels.length ? [...rest, day] : rest;
+  return day.duels.length || day.unclear?.length ? [...rest, day] : rest;
+}
+
+/** Mark (or unmark) a project as "I don't get it" for one person on one day. */
+export function markUnclear(days: PulseDay[], voter: string, date: string, project: string, undo = false): PulseDay[] {
+  const i = days.findIndex((d) => d.date === date && voterSlug(d.voter) === voterSlug(voter));
+  const day: PulseDay = i >= 0 ? { ...days[i], unclear: [...(days[i].unclear ?? [])] } : { voter, date, duels: [], unclear: [] };
+  day.unclear = undo ? day.unclear!.filter((id) => id !== project) : [...new Set([...day.unclear!, project])];
+  const rest = days.filter((_, j) => j !== i);
+  return day.duels.length || day.unclear.length ? [...rest, day] : rest;
+}
+
+/** How many people don't get a project: each person counts once, however often they said it. */
+export function unclearCounts(days: PulseDay[]): Map<string, number> {
+  const who = new Map<string, Set<string>>();
+  for (const d of days) for (const id of d.unclear ?? []) (who.get(id) ?? who.set(id, new Set()).get(id)!).add(voterSlug(d.voter));
+  return new Map([...who].map(([id, s]) => [id, s.size]));
 }
 
 /**

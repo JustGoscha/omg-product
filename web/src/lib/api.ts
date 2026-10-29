@@ -3,8 +3,8 @@ import type { CommentOp } from "../../../src/core/comment-ops";
 import type { AnchoredThread } from "../../../src/core/comments";
 import type { Heartbeat } from "../../../src/core/requests";
 import { applyLocalOp, isStatic, localAnswered, localPulse, localResults, rememberExported, saveLocalPulse, snapshotPath } from "./static";
-import { addDuel, type PulseDay } from "../../../src/core/pulse";
-import { artifactDb, artifactDuel, artifactMe, artifactPulse } from "./artifact";
+import { addDuel, markUnclear, type PulseDay } from "../../../src/core/pulse";
+import { artifactDb, artifactDuel, artifactMe, artifactPulse, artifactUnclear } from "./artifact";
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public conflict = false) {
@@ -85,6 +85,20 @@ export const api = {
     }
     const base = localPulse<PulseDay[]>() ?? (await call<{ days: PulseDay[] }>("/api/pulse")).days;
     const days = addDuel(base, v.voter, v.date, { win: v.win, over: v.over, neither: v.neither }, v.undo);
+    saveLocalPulse(days);
+    return { days };
+  },
+  /** "I don't get it": the project collects ??? instead of a duel */
+  pulseUnclear: async (v: { voter: string; date: string; project: string; undo?: boolean }) => {
+    if (!isStatic)
+      return call<{ days: PulseDay[] }>("/api/pulse", { method: "POST", body: JSON.stringify({ voter: v.voter, date: v.date, unclear: v.project, undo: v.undo }) });
+    const [db, me] = await Promise.all([artifactDb(), artifactMe()]);
+    if (db && me) {
+      const exported = (await call<{ days: PulseDay[] }>("/api/pulse")).days;
+      return { days: [...exported, ...(await artifactUnclear(db, me, v.date, v.project, v.undo))] };
+    }
+    const base = localPulse<PulseDay[]>() ?? (await call<{ days: PulseDay[] }>("/api/pulse")).days;
+    const days = markUnclear(base, v.voter, v.date, v.project, v.undo);
     saveLocalPulse(days);
     return { days };
   },

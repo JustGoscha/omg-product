@@ -12,7 +12,7 @@ import type { RequestT } from "../core/schema.ts";
 import { anchorThreads, EditConflict, loadComments, replaceBody, replaceSection, ROOT_SCOPE, scopeDir, updateComments } from "../core/comments.ts";
 import { patchStep } from "../core/session-edit.ts";
 import type { CommentOp } from "../core/comment-ops.ts";
-import { loadPulse, savePulseDuel } from "../core/pulse-files.ts";
+import { loadPulse, savePulseDuel, savePulseUnclear } from "../core/pulse-files.ts";
 import { localDate, mayDuel } from "../core/pulse.ts";
 import { timingSafeEqual } from "node:crypto";
 
@@ -187,9 +187,17 @@ export function serve({ root, port, host, hosted = false, key, data }: ServeOpti
         // pulse: GET every day's duels, POST one { voter, date, win, over, neither?, undo? }
         if (path === "/api/pulse") {
           if (req.method === "POST") {
-            const { voter, date, win, over, undo, neither } = (await req.json()) as { voter: string; date: string; win: string; over: string; undo?: boolean; neither?: boolean };
+            const { voter, date, win, over, undo, neither, unclear } = (await req.json()) as { voter: string; date: string; win: string; over: string; undo?: boolean; neither?: boolean; unclear?: string };
             const ws = workspace();
             if (!voter?.trim()) return json({ error: "who decides?" }, 400);
+            if (hosted && ![-1, 0, 1].some((n) => date === localDate(new Date(Date.now() + n * 864e5)))) return json({ error: "wrong date" }, 400);
+            // "I don't get it" on one project: no duel, the project collects ???
+            if (unclear) {
+              if (!ws.projects.some((p) => p.id === unclear)) return json({ error: "project not found" }, 404);
+              savePulseUnclear(pulseRoot, voter.trim(), date, unclear, !!undo);
+              if (pulseRoot !== root) send({ type: "change", paths: [`pulse/${date}`] });
+              return json({ days: loadPulse(pulseRoot) });
+            }
             if (![win, over].every((id) => ws.projects.some((p) => p.id === id))) return json({ error: "project not found" }, 404);
             // hosted, the date can't be picked freely: the voter's today is at most a day off ours
             if (hosted && ![-1, 0, 1].some((n) => date === localDate(new Date(Date.now() + n * 864e5)))) return json({ error: "wrong date" }, 400);

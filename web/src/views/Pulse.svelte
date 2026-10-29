@@ -6,7 +6,7 @@
   import { href, router } from "../lib/router.svelte";
   import { api } from "../lib/api";
   import { md } from "../lib/md";
-  import { inPulse, localDate, mayDuel, nextPair, rank, DAILY, type PulseDay } from "../../../src/core/pulse";
+  import { inPulse, localDate, mayDuel, nextPair, rank, unclearCounts, voterSlug, DAILY, type PulseDay } from "../../../src/core/pulse";
   import type { ProjectInfo } from "../lib/types";
   import { isStatic } from "../lib/static";
   import StatusPicker from "../components/StatusPicker.svelte";
@@ -98,6 +98,21 @@
     }, 260);
   }
   const skip = () => choose(null);
+
+  // "I don't get it": the project can't be judged, so it isn't ready. It collects ??? (one per
+  // person) and this duel is skipped without moving the ranking.
+  const unclear = $derived(unclearCounts(days ?? []));
+  const iMarked = (id: string) => (days ?? []).some((d) => d.date === today && voterSlug(d.voter) === voterSlug(voter) && d.unclear?.includes(id));
+  async function dontGet(id: string) {
+    if (!pair || picked) return;
+    const undo = iMarked(id);
+    try {
+      days = (await api.pulseUnclear({ voter, date: today, project: id, undo })).days;
+    } catch (e) {
+      error = (e as Error).message;
+    }
+    if (!undo) draw();
+  }
   async function undo() {
     const last = history.at(-1);
     if (!last) return;
@@ -267,8 +282,8 @@
     class:lose={!!picked && picked !== p.id}
     role="button"
     tabindex="0"
-    onclick={(e) => !(e.target as HTMLElement).closest(".meta") && choose(p.id)}
-    onkeydown={(e) => e.key === "Enter" && !(e.target as HTMLElement).closest(".meta") && choose(p.id)}
+    onclick={(e) => !(e.target as HTMLElement).closest(".meta, .dontget") && choose(p.id)}
+    onkeydown={(e) => e.key === "Enter" && !(e.target as HTMLElement).closest(".meta, .dontget") && choose(p.id)}
   >
     <span class="meta">
       <StatusPicker project={p} small onshelve={draw} />
@@ -285,6 +300,10 @@
     {#if !p.summary && !problem && !solution && Object.values(p.sections)[0]}
       <span class="sec"><span class="md">{@html md(Object.values(p.sections)[0])}</span></span>
     {/if}
+    <span class="dontget-row">
+      <button class="dontget" class:on={iMarked(p.id)} onclick={() => dontGet(p.id)} title={t.pulse.dontGetHint}>🤔 {t.pulse.dontGet}</button>
+      {#if unclear.get(p.id)}<span class="qq" title={t.pulse.unclearHint(unclear.get(p.id)!)}>{"?".repeat(Math.min(3, unclear.get(p.id)!))}{unclear.get(p.id)! > 3 ? ` ${unclear.get(p.id)}` : ""}</span>{/if}
+    </span>
   </div>
 {/snippet}
 
@@ -329,6 +348,7 @@
               {t.pulse.record(r.wins, r.losses)}
               {#if p}· {p.priority} {t.pulse.declared}{/if}
               {#if r.split}<b class="split" title={t.pulse.splitHint}>⚡ {t.pulse.split}</b>{/if}
+              {#if unclear.get(r.id)}<b class="qq" title={t.pulse.unclearHint(unclear.get(r.id)!)}>??? {unclear.get(r.id)}</b>{/if}
             </span>
           </div>
           <span class="elo">{r.rating}</span>
@@ -581,6 +601,35 @@
   }
   .walk h1 {
     font-size: clamp(1.5rem, 1rem + 2vw, 2.2rem);
+  }
+  .dontget-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: auto;
+    padding-top: 0.4rem;
+  }
+  .dontget {
+    border: 1.5px dashed var(--fog);
+    background: transparent;
+    border-radius: 999px;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .dontget:hover,
+  .dontget.on {
+    border-style: solid;
+    border-color: var(--block);
+    color: var(--block);
+  }
+  .qq {
+    font-weight: 800;
+    color: var(--block);
+    letter-spacing: 0.08em;
   }
   .summary {
     font-size: 1.05rem;

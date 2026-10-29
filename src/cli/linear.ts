@@ -1,5 +1,6 @@
 import { join } from "node:path";
-import { readText, updateFrontmatter, writeText, yamlStringify } from "../core/files.ts";
+import { markdownSections, readText, splitFrontmatter, updateFrontmatter, writeText, yamlStringify } from "../core/files.ts";
+import { replaceSection } from "../core/comments.ts";
 import type { Workspace } from "../core/workspace.ts";
 
 // Import from Linear: creates missing initiatives and projects, and keeps dates in
@@ -22,6 +23,8 @@ export interface LinearProject {
   id: string; // "ENG-56" or uuid
   name: string;
   description?: string | null;
+  /** the full description markdown; Problem and Solution are taken from it */
+  body?: string | null;
   url?: string;
   startDate?: string | null;
   targetDate?: string | null;
@@ -139,6 +142,8 @@ export function applyLinear(ws: Workspace, data: LinearData, dryRun: boolean, ba
       }
       if (!existing.linear?.id) patch.linear = { id: lp.id, ...(lp.url ? { url: lp.url } : {}) };
       if (Object.keys(patch).length && !dryRun) updateFrontmatter(join(ws.root, existing.file), patch);
+      const filled = fillFromLinear(join(ws.root, existing.file), lp, dryRun);
+      if (filled.length) log.push(`~ ${existing.id}: ${filled.join(" + ")} from Linear`);
       continue;
     }
     if (st === "completed" || st === "canceled") continue;
@@ -163,9 +168,55 @@ export function applyLinear(ws: Workspace, data: LinearData, dryRun: boolean, ba
           confidence: "low",
           ...(when ? { when } : {}),
           linear: { id: lp.id, ...(lp.url ? { url: lp.url } : {}) },
-        }).trimEnd()}\n---\n\n${lp.description?.trim() ? lp.description.trim() : "## Problem\n"}\n`,
+        }).trimEnd()}\n---\n\n${newBody(lp)}\n`,
       );
   }
   if (skipped) log.push(`(${skipped} undated backlog projects left out; add them with --backlog)`);
   return log.length ? log : ["nothing to do"];
+}
+
+// Problem and Solution as Linear descriptions write them: a heading (any level) or a bold
+// line, in German or English. Everything until the next heading belongs to it.
+const PROBLEM = /^(das\s+)?(problem(stellung)?|pain|warum|why)\b/i;
+const SOLUTION = /^(die\s+)?(lösung(sansatz)?|loesung|solution|ansatz|approach)\b/i;
+export function problemSolution(md: string | null | undefined): { problem?: string; solution?: string } {
+  const out: { problem?: string; solution?: string } = {};
+  let key: "problem" | "solution" | null = null;
+  let buf: string[] = [];
+  const flush = () => {
+    const text = buf.join("\n").trim();
+    if (key && text && !out[key]) out[key] = text;
+    buf = [];
+  };
+  for (const line of (md ?? "").split("\n")) {
+    const h = line.match(/^\s*(?:#{1,6}\s+|\*\*)(.+?)(?:\*\*)?\s*:?\s*$/);
+    if (h) {
+      flush();
+      const title = h[1].replace(/[*:]/g, "").trim();
+      key = PROBLEM.test(title) ? "problem" : SOLUTION.test(title) ? "solution" : null;
+    } else if (key) buf.push(line);
+  }
+  flush();
+  return out;
+}
+
+/** Fill a project's empty Problem and Solution from Linear; text people wrote stays. */
+export function fillFromLinear(file: string, lp: LinearProject, dryRun: boolean): string[] {
+  const found = problemSolution(lp.body ?? lp.description);
+  const have = markdownSections(splitFrontmatter(readText(file)).body);
+  const done: string[] = [];
+  for (const [key, heading] of [["problem", "Problem"], ["solution", "Solution"]] as const) {
+    const mine = Object.entries(have).find(([k]) => k.startsWith(key))?.[1]?.trim();
+    if (found[key] && !mine) {
+      if (!dryRun) replaceSection(file, heading, found[key]!);
+      done.push(heading);
+    }
+  }
+  return done;
+}
+
+/** a new project's text: Linear's summary, then Problem and Solution from its description */
+function newBody(lp: LinearProject) {
+  const { problem, solution } = problemSolution(lp.body ?? lp.description);
+  return [lp.description?.trim(), `## Problem\n${problem ?? ""}`.trim(), solution ? `## Solution\n${solution}` : ""].filter(Boolean).join("\n\n");
 }

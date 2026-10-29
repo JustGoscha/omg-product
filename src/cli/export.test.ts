@@ -32,9 +32,9 @@ test("static export: a snapshot per GET endpoint, no agent", () => {
 test("static export: prototypes get the annotate layer with a relative path", () => {
   const out = join(tmp, "snap");
   const html = readFileSync(join(out, "files/projects/recurring-jobs/prototypes/series.html"), "utf8");
-  expect(html).toContain(`<script src="../../../../__omgp/annotate.js"></script></body>`);
+  expect(html).toContain(`<script src="../../../../omgp-layer/annotate.js"></script></body>`);
   expect(html.match(/annotate\.js/g)?.length).toBe(1);
-  expect(existsSync(join(out, "__omgp/annotate.js"))).toBe(true);
+  expect(existsSync(join(out, "omgp-layer/annotate.js"))).toBe(true);
   // other files as they are, so prototypes find their brand css
   expect(readFileSync(join(out, "files/brand/tokens.css"), "utf8")).toBe(readFileSync(join(acme, "brand/tokens.css"), "utf8"));
 });

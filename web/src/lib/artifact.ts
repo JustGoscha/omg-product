@@ -3,7 +3,7 @@
 // reads all of them, each person writes only their own (see ARTIFACT_CAPABILITIES).
 // Anywhere else (the GitHub Pages demo, a saved file) `claude.use` is missing or resolves null,
 // and the static export keeps working as before.
-import { addDuel, type Duel, type PulseDay } from "../../../src/core/pulse";
+import { addDuel, markUnclear, type Duel, type PulseDay } from "../../../src/core/pulse";
 
 /** What `omgp export --artifact` declares when it publishes the page. */
 export const ARTIFACT_CAPABILITIES = {
@@ -30,9 +30,19 @@ export const artifactMe = () =>
     return u ? await u.id().catch(() => null) : null;
   })());
 
-type Stored = { days?: Record<string, Duel[]> };
-const toDays = (voter: string, body: Stored | undefined): PulseDay[] =>
-  Object.entries(body?.days ?? {}).map(([date, duels]) => ({ voter, date, duels: Array.isArray(duels) ? duels : [] }));
+type Stored = { days?: Record<string, Duel[]>; unclear?: Record<string, string[]> };
+const toDays = (voter: string, body: Stored | undefined): PulseDay[] => {
+  const dates = new Set([...Object.keys(body?.days ?? {}), ...Object.keys(body?.unclear ?? {})]);
+  return [...dates].map((date) => {
+    const duels = body?.days?.[date];
+    const unclear = body?.unclear?.[date];
+    return { voter, date, duels: Array.isArray(duels) ? duels : [], ...(Array.isArray(unclear) && unclear.length ? { unclear } : {}) };
+  });
+};
+const toStored = (days: PulseDay[]): Stored => ({
+  days: Object.fromEntries(days.filter((d) => d.duels.length).map((d) => [d.date, d.duels.map((x) => (x.neither ? { win: x.win, over: x.over, neither: true } : { win: x.win, over: x.over }))])),
+  unclear: Object.fromEntries(days.filter((d) => d.unclear?.length).map((d) => [d.date, d.unclear!])),
+});
 
 export async function artifactPulse(db: Db): Promise<PulseDay[]> {
   const snap = await db.collection("pulse").get();
@@ -41,12 +51,17 @@ export async function artifactPulse(db: Db): Promise<PulseDay[]> {
 
 /** one duel by the viewer: read their own document, add it, write it back */
 export async function artifactDuel(db: Db, me: string, date: string, duel: Duel, undo = false): Promise<PulseDay[]> {
+  return changeMine(db, me, (days) => addDuel(days, me, date, duel, undo));
+}
+
+/** "I don't get it" on one project, by the viewer */
+export function artifactUnclear(db: Db, me: string, date: string, project: string, undo = false) {
+  return changeMine(db, me, (days) => markUnclear(days, me, date, project, undo));
+}
+
+async function changeMine(db: Db, me: string, change: (days: PulseDay[]) => PulseDay[]) {
   const ref = db.doc(`pulse/${me}`);
   const mine = await ref.get();
-  const days = toDays(me, mine.exists ? (mine.data() as Stored) : undefined);
-  const next = addDuel(days.filter((d) => d.date === date), me, date, duel, undo)[0];
-  const all: Record<string, Duel[]> = Object.fromEntries(days.filter((d) => d.date !== date).map((d) => [d.date, d.duels]));
-  if (next?.duels.length) all[date] = next.duels.map((d) => (d.neither ? { win: d.win, over: d.over, neither: true } : { win: d.win, over: d.over }));
-  await ref.set({ days: all });
+  await ref.set(toStored(change(toDays(me, mine.exists ? (mine.data() as Stored) : undefined))));
   return artifactPulse(db);
 }
