@@ -1,0 +1,38 @@
+{
+  "name": "omgp",
+  "version": "0.1.0",
+  "description": "A product harness: roadmap, prototypes and decision sessions as plain files, rendered by a local studio, driven by any coding agent.",
+  "type": "module",
+  "bin": {
+    "omgp": "./bin/omgp"
+  },
+  "scripts": {
+    "dev": "bun run scripts/dev.ts",
+    "build": "vite build && bun run build:cli",
+    "studio": "bun src/cli/main.ts serve --dir examples/acme",
+    "check": "svelte-check --tsconfig ./tsconfig.json && tsc -p tsconfig.node.json --noEmit",
+    "test": "bun test",
+    "build:cli": "bun build src/cli/main.ts --target=bun --outfile=dist/omgp.js",
+    "export:demo": "bun run scripts/export-demo.ts"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
+    "@fontsource-variable/atkinson-hyperlegible-next": "^5.3.0",
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@milkdown/crepe": "^7.22.3",
+    "marked": "^18.1.1",
+    "mermaid": "^12.2.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tsconfig/svelte": "^5.0.8",
+    "@types/bun": "^1.4.3",
+    "svelte": "^5.57.2",
+    "svelte-check": "^4.7.6",
+    "typescript": "5.9",
+    "vite": "^8.3.4"
+  }
+}

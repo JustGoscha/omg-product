@@ -1,0 +1,9 @@
+node_modules
+dist
+.DS_Store
+.omgp/
+# company workspaces never go into this repo; keep them in their own (private) repo
+workspaces/
+.claude/
+# static demo export (bun run export:demo)
+_site/

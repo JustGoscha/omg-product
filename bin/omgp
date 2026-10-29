@@ -1,0 +1,9 @@
+#!/usr/bin/env bun
+// In a checkout with dependencies installed, run the sources; as an installed plugin
+// (no node_modules), run the bundled CLI from dist/.
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
+const root = join(import.meta.dir, "..");
+const dev = existsSync(join(root, "node_modules", "yaml")) || !existsSync(join(root, "dist", "omgp.js"));
+await import(dev ? "../src/cli/main.ts" : "../dist/omgp.js");

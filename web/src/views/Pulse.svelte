@@ -1,0 +1,962 @@
+<script lang="ts">
+  import { artifactMe } from "../lib/artifact";
+  // Pulse: "what is more important?", two projects at a time, in rounds of a few duels.
+  // Phone first: people open #/pulse with their coffee, decide five duels, see the ranking.
+  import { store } from "../lib/store.svelte";
+  import { href, router } from "../lib/router.svelte";
+  import { api } from "../lib/api";
+  import { md } from "../lib/md";
+  import { inPulse, localDate, mayDuel, nextPair, rank, unclearCounts, voterSlug, DAILY, type PulseDay } from "../../../src/core/pulse";
+  import type { ProjectInfo } from "../lib/types";
+  import { isStatic } from "../lib/static";
+  import StatusPicker from "../components/StatusPicker.svelte";
+
+  let { results }: { results: boolean } = $props();
+
+  const t = $derived(store.t);
+  const ws = $derived(store.ws);
+  const today = localDate();
+  let days = $state<PulseDay[] | null>(null);
+  let error = $state<string | null>(null);
+  let name = $state("");
+  let who = $state<"everyone" | "me">("everyone");
+
+  // anonymous workspaces vote with a random id per device instead of a name
+  const anonymous = $derived(!!ws?.config.pulse?.anonymous);
+  function deviceId() {
+    const k = "omgp:pulse-device";
+    try {
+      const id = localStorage.getItem(k) ?? `anon-${crypto.randomUUID().slice(0, 8)}`;
+      localStorage.setItem(k, id);
+      return id;
+    } catch {
+      return `anon-${crypto.randomUUID().slice(0, 8)}`;
+    }
+  }
+  // hosted as a claude.ai Artifact, the viewer votes as themselves
+  let artifactVoter = $state<string | null>(null);
+  artifactMe().then((id) => (artifactVoter = id));
+  const voter = $derived(artifactVoter ?? (anonymous ? deviceId() : store.author));
+
+  async function load() {
+    try {
+      days = (await api.pulse()).days;
+    } catch (e) {
+      error = (e as Error).message;
+    }
+  }
+  load();
+  $effect(() => store.on((e) => (e.type === "change" && e.paths?.some((p) => p.startsWith("pulse/")) ? load() : undefined)));
+
+  const ids = $derived(ws?.projects.filter((p) => inPulse(p, ws.config.profile?.doneMeans)).map((p) => p.id) ?? []);
+  const cfg = $derived(ws?.config.pulse ?? {});
+  const daily = $derived(cfg.daily ?? DAILY);
+
+  // ---- the round: `pair` stays put while it animates; the next one is drawn after
+  let pair = $state<[string, string] | null>(null);
+  let inRound = $state(0);
+  let started = $state(false);
+  let picked = $state<string | null>(null);
+  let history = $state<{ win: string; over: string; neither?: boolean }[]>([]);
+  const draw = () => (pair = days && voter ? nextPair(days, ids, voter, today) : null);
+  $effect(() => {
+    if (!started && days && ws && voter) {
+      started = true;
+      draw();
+    }
+  });
+  const canMore = $derived(!!days && mayDuel(days, voter, today, cfg));
+  const roundOver = $derived(inRound >= daily || !pair || !canMore);
+  // stopping the session: the top 3 are asked for their next tasks one by one, then the ranking
+  let stopped = $state(false);
+  let walk = $state(0);
+  $effect(() => {
+    // nothing left to compare ends the session by itself
+    if (started && days && !pair && !stopped) stopped = true;
+  });
+  const a = $derived(pair ? store.project(pair[0]) : null);
+  const b = $derived(pair ? store.project(pair[1]) : null);
+
+  // win: the one that matters more; null: neither matters right now, both drop
+  function choose(win: string | null) {
+    if (!pair || picked) return;
+    const neither = win === null;
+    const over = neither ? pair[1] : pair[0] === win ? pair[1] : pair[0];
+    if (neither) win = pair[0];
+    picked = neither ? "neither" : win;
+    const saved = api.pulseDuel({ voter, date: today, win: win!, over, neither });
+    setTimeout(async () => {
+      try {
+        days = (await saved).days;
+      } catch (e) {
+        error = (e as Error).message;
+      }
+      history = [...history, { win: win!, over, neither }];
+      inRound++;
+      picked = null;
+      draw();
+    }, 260);
+  }
+  const skip = () => choose(null);
+
+  // "I don't get it": the project can't be judged, so it isn't ready. It collects ??? (one per
+  // person) and this duel is skipped without moving the ranking.
+  const unclear = $derived(unclearCounts(days ?? []));
+  const iMarked = (id: string) => (days ?? []).some((d) => d.date === today && voterSlug(d.voter) === voterSlug(voter) && d.unclear?.includes(id));
+  async function dontGet(id: string) {
+    if (!pair || picked) return;
+    const undo = iMarked(id);
+    try {
+      days = (await api.pulseUnclear({ voter, date: today, project: id, undo })).days;
+    } catch (e) {
+      error = (e as Error).message;
+    }
+    if (!undo) draw();
+  }
+  async function undo() {
+    const last = history.at(-1);
+    if (!last) return;
+    history = history.slice(0, -1);
+    inRound = Math.max(0, inRound - 1);
+    days = (await api.pulseDuel({ voter, date: today, win: last.win, over: last.over, undo: true })).days;
+    pair = Math.random() < 0.5 ? [last.win, last.over] : [last.over, last.win];
+  }
+  function more() {
+    inRound = 0;
+    draw();
+  }
+
+  $effect(() => {
+    if (results) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).closest("input, textarea, [contenteditable]") || !pair || roundOver) return;
+      if (e.key === "z" && (e.metaKey || e.ctrlKey)) return (e.preventDefault(), undo());
+      if (e.metaKey || e.altKey || e.ctrlKey) return;
+      const k = ({ ArrowLeft: 0, ArrowUp: 0, ArrowRight: 1, ArrowDown: 1 } as Record<string, number>)[e.key];
+      if (k !== undefined) {
+        e.preventDefault();
+        choose(pair[k]);
+      } else if (e.key === "n" || e.key === "s") skip();
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  });
+
+  const section = (p: ProjectInfo, name: string) => Object.entries(p.sections).find(([k]) => k.startsWith(name))?.[1]?.trim();
+  const initiativeNames = (p: ProjectInfo) => p.initiatives.map((i) => ws?.initiatives.find((x) => x.id === i)?.name ?? i);
+
+  const ranked = $derived(days && ws ? rank(days, ids, { today, voter: who === "me" ? voter : undefined, k: cfg.k }) : []);
+  const people = $derived(new Set((days ?? []).map((d) => d.voter.toLowerCase())).size);
+  const anyDuels = $derived(ranked.some((r) => r.wins + r.losses > 0));
+  // focus: the top this many are what we work on; everything below waits
+  const focusN = $derived(ws?.config.profile?.focus ?? 3);
+  // a duel on screen: on a phone it fills exactly one screen, no scrolling
+  const duelling = $derived(!results && !!pair && !roundOver && !stopped && !!store.author);
+
+  // the top 3 always get asked for their 3 most important next steps; saved into project.md
+  const TOP = 3;
+  const tops = $derived(
+    isStatic
+      ? []
+      : ranked
+          .slice(0, TOP)
+          .filter((r) => r.wins + r.losses > 0)
+          .map((r, i) => ({ r, p: store.project(r.id)!, rank: i + 1 }))
+          .filter((x) => x.p),
+  );
+  let drafts = $state<Record<string, string[]>>({});
+  let editing = $state<Set<string>>(new Set());
+  const draft = (p: ProjectInfo) => drafts[p.id] ?? [0, 1, 2].map((i) => p.next?.[i] ?? "");
+  const setDraft = (p: ProjectInfo, i: number, v: string) => (drafts[p.id] = draft(p).map((x, j) => (j === i ? v : x)));
+  async function saveSteps(id: string) {
+    const p = store.project(id);
+    if (!p) return;
+    try {
+      await api.patchProject(id, { next: draft(p).map((s) => s.trim()).filter(Boolean) });
+      delete drafts[id];
+      editing = new Set([...editing].filter((x) => x !== id));
+      await store.load();
+    } catch (e) {
+      error = (e as Error).message;
+    }
+  }
+</script>
+
+<div class="pulse" class:duelling>
+  <header class="bar">
+    <a class="back" href={href("/")} aria-label={t.roadmap}>←<span class="wide">{t.roadmap}</span></a>
+    <strong class="title">{ws?.config.name ?? "…"} · {t.pulse.title}</strong>
+    <div class="seg" role="group">
+      <button class:on={!results} onclick={() => router.go("/pulse")}>{t.pulse.swipe}</button>
+      <button class:on={results} onclick={() => router.go("/pulse/results")}>{t.pulse.results}</button>
+    </div>
+  </header>
+
+  {#if error}<p class="err">{error}</p>{/if}
+
+  {#if ws && !anonymous && !store.author && !artifactVoter}
+    <form class="who" onsubmit={(e) => (e.preventDefault(), name.trim() && store.setAuthor(name.trim()))}>
+      <h1>{t.pulse.who}</h1>
+      <p class="muted">{t.pulse.hint}</p>
+      <input class="field" bind:value={name} placeholder="Name" autocomplete="name" />
+      <button class="btn primary" type="submit">OK</button>
+    </form>
+  {:else if !results}
+    {#if !ws || !days}
+      <p class="muted center">…</p>
+    {:else if ids.length < 2}
+      <p class="muted center">{t.pulse.nothing}</p>
+    {:else if stopped && walk < tops.length}
+      {@const { p, rank: n } = tops[walk]}
+      <div class="progress" aria-label="{walk + 1} / {tops.length}">
+        {#each tops as _, i}<span class:on={i < walk} class:cur={i === walk}></span>{/each}
+      </div>
+      <section class="ask open walk">
+        <small class="muted">{t.steps.top(n)}</small>
+        <h1>{p.name}</h1>
+        <h3>{p.next?.length ? t.steps.check : t.steps.ask}</h3>
+        <form onsubmit={(e) => (e.preventDefault(), saveSteps(p.id).then(() => walk++))}>
+          {#each [0, 1, 2] as i}
+            <input class="field" placeholder={t.steps.placeholder[i]} value={draft(p)[i]} oninput={(e) => setDraft(p, i, (e.target as HTMLInputElement).value)} />
+          {/each}
+          <div class="row">
+            <button class="btn" type="button" onclick={() => walk++}>{t.pulse.skip}</button>
+            <button class="btn primary" type="submit"><span class="ico">✅</span>{walk + 1 < tops.length ? t.steps.saveNext : t.steps.save}</button>
+          </div>
+        </form>
+      </section>
+    {:else if stopped}
+      <section class="done">
+        <h1>{t.steps.thanks}</h1>
+        <p class="muted">{!pair ? t.pulse.allDone : t.steps.thanksBody}</p>
+      </section>
+      {@render ranking(Infinity)}
+    {:else if roundOver}
+      <section class="done">
+        <h1>{t.pulse.roundDone}</h1>
+        <p class="muted">{canMore ? t.pulse.roundBody : t.pulse.limitBody}</p>
+        <div class="row">
+          {#if history.length}<button class="btn" onclick={undo}><span class="ico">↩️</span>{t.pulse.undo}</button>{/if}
+          <button class="btn" class:primary={!canMore} onclick={() => (stopped = true)}><span class="ico">✋</span>{t.steps.stop}</button>
+          {#if canMore}<button class="btn primary" onclick={more}><span class="ico">⚡</span>{t.pulse.more(daily)}</button>{/if}
+        </div>
+      </section>
+      {@render ranking(5)}
+    {:else if a && b && pair}
+      <div class="progress" aria-label={t.pulse.round(inRound + 1, daily)}>
+        {#each Array(daily) as _, i}<span class:on={i < inRound} class:cur={i === inRound}></span>{/each}
+      </div>
+      <h1 class="q">{t.pulse.question}</h1>
+      {#key pair.join("|")}
+        <div class="duel">
+          {@render card(a, "←")}
+          <div class="vs" aria-hidden="true">{t.pulse.vs}</div>
+          {@render card(b, "→")}
+        </div>
+      {/key}
+      <div class="foot">
+        {#if history.length}<button class="btn" onclick={undo}><span class="ico">↩️</span>{t.pulse.undo}</button>{:else}<span></span>{/if}
+        <span class="muted small tap">{t.pulse.pick}{anonymous ? ` · ${t.pulse.anonymous}` : ""}</span>
+        <button class="btn" onclick={skip} title={t.pulse.neitherHint}><span class="ico">🤷</span>{t.pulse.neither}<kbd class="key">N</kbd></button>
+      </div>
+      <p class="muted small center wide">{t.pulse.inPulse(ids.length, ws.projects.length - ids.length)}</p>
+    {/if}
+  {:else}
+    <section class="head">
+      <div class="seg" role="group">
+        <button class:on={who === "everyone"} onclick={() => (who = "everyone")}>{t.pulse.everyone} <small>{t.pulse.people(people)}</small></button>
+        <button class:on={who === "me"} onclick={() => (who = "me")}>{t.pulse.justMe}</button>
+      </div>
+    </section>
+    {@render nextSteps()}
+    {@render ranking(Infinity)}
+  {/if}
+</div>
+
+{#snippet card(p: ProjectInfo, key: string)}
+  {@const problem = section(p, "problem")}
+  {@const solution = section(p, "solution")}
+  <div
+    class="card"
+    class:win={picked === p.id}
+    class:lose={!!picked && picked !== p.id}
+    role="button"
+    tabindex="0"
+    onclick={(e) => !(e.target as HTMLElement).closest(".meta, .dontget") && choose(p.id)}
+    onkeydown={(e) => e.key === "Enter" && !(e.target as HTMLElement).closest(".meta, .dontget") && choose(p.id)}
+  >
+    <span class="meta">
+      <StatusPicker project={p} small onshelve={draw} />
+      {#each initiativeNames(p) as n}<span class="ini">{n}</span>{/each}
+      <kbd>{key}</kbd>
+    </span>
+    <span class="name">{p.name}</span>
+    {#if p.next?.length}
+      <span class="next"><b>{t.nextMove}</b>{#each p.next as s, i}<span class="step" class:first={i === 0}>{i + 1}. {s}</span>{/each}</span>
+    {/if}
+    {#if p.summary}<span class="summary">{p.summary}</span>{/if}
+    {#if problem}<span class="sec"><b>{t.phases.problem}</b><span class="md">{@html md(problem)}</span></span>{/if}
+    {#if solution}<span class="sec"><b>{t.phases.solution}</b><span class="md">{@html md(solution)}</span></span>{/if}
+    {#if !p.summary && !problem && !solution && Object.values(p.sections)[0]}
+      <span class="sec"><span class="md">{@html md(Object.values(p.sections)[0])}</span></span>
+    {/if}
+    <span class="dontget-row">
+      <button class="dontget" class:on={iMarked(p.id)} onclick={() => dontGet(p.id)} title={t.pulse.dontGetHint}>🤔 {t.pulse.dontGet}</button>
+      {#if unclear.get(p.id)}<span class="qq" title={t.pulse.unclearHint(unclear.get(p.id)!)}>{"?".repeat(Math.min(3, unclear.get(p.id)!))}{unclear.get(p.id)! > 3 ? ` ${unclear.get(p.id)}` : ""}</span>{/if}
+    </span>
+  </div>
+{/snippet}
+
+{#snippet nextSteps()}
+  {#if tops.length}
+    <section class="tops">
+      {#each tops as { r, p, rank: n } (r.id)}
+        {@const missing = (p.next?.length ?? 0) < 3}
+        {@const open = missing || editing.has(p.id)}
+        <div class="ask" class:open>
+          <h3><small class="muted">{t.steps.top(n)}</small> {p.name}: {missing ? t.steps.ask : t.steps.check}</h3>
+          {#if open}
+            <form onsubmit={(e) => (e.preventDefault(), saveSteps(p.id))}>
+              {#each [0, 1, 2] as i}
+                <input class="field" placeholder={t.steps.placeholder[i]} value={draft(p)[i]} oninput={(e) => setDraft(p, i, (e.target as HTMLInputElement).value)} />
+              {/each}
+              <div class="row"><button class="btn primary small" type="submit">{t.steps.save}</button></div>
+            </form>
+          {:else}
+            <ol>{#each p.next ?? [] as s}<li>{s}</li>{/each}</ol>
+            <div class="row"><button class="btn small ghost" onclick={() => (editing = new Set([...editing, p.id]))}>{t.steps.edit}</button></div>
+          {/if}
+        </div>
+      {/each}
+    </section>
+  {/if}
+{/snippet}
+
+{#snippet ranking(max: number)}
+  {#if !anyDuels}
+    <p class="muted center">{t.pulse.noVotes}</p>
+  {:else}
+    <ol class="rank">
+      {#each ranked.slice(0, max) as r, i (r.id)}
+        {@const p = store.project(r.id)}
+        {#if i === focusN && max > focusN}<li class="focusline">🎯 {t.focus.line(focusN)}</li>{/if}
+        <li class:quiet={!(r.wins + r.losses)} class:waits={i >= focusN} class:infocus={i < focusN}>
+          <span class="n">{i + 1}</span>
+          <div class="who-row">
+            <a href={href(`/p/${r.id}`)}>{p?.name ?? r.id}</a>
+            <span class="sub">
+              {t.pulse.record(r.wins, r.losses)}
+              {#if p}· {p.priority} {t.pulse.declared}{/if}
+              {#if r.split}<b class="split" title={t.pulse.splitHint}>⚡ {t.pulse.split}</b>{/if}
+              {#if unclear.get(r.id)}<b class="qq" title={t.pulse.unclearHint(unclear.get(r.id)!)}>??? {unclear.get(r.id)}</b>{/if}
+            </span>
+          </div>
+          <span class="elo">{r.rating}</span>
+          <span class="delta" class:upd={r.delta > 0} class:dn={r.delta < 0} title={t.pulse.week}>
+            {r.delta > 0 ? `▲${r.delta}` : r.delta < 0 ? `▼${-r.delta}` : "·"}
+          </span>
+        </li>
+      {/each}
+    </ol>
+  {/if}
+{/snippet}
+
+<style>
+  .pulse {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 0 1rem 1.5rem;
+    max-width: 64rem;
+    margin: 0 auto;
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding: 0.8rem 0;
+  }
+  .back {
+    display: inline-flex;
+    gap: 0.3rem;
+    color: var(--ink-3);
+    text-decoration: none;
+    font-weight: 650;
+  }
+  .title {
+    flex: 1;
+    font-family: var(--font-display);
+  }
+  .seg {
+    display: inline-flex;
+    background: var(--paper-2);
+    border-radius: 999px;
+    padding: 0.2rem;
+  }
+  .seg button {
+    border: 0;
+    background: none;
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    font-weight: 650;
+    color: var(--ink-2);
+  }
+  .seg button.on {
+    background: var(--card);
+    color: var(--ink);
+    box-shadow: 0 1px 3px rgba(27, 36, 48, 0.15);
+  }
+  .seg small {
+    color: var(--ink-3);
+    font-weight: 600;
+  }
+  .center {
+    text-align: center;
+  }
+  .small {
+    font-size: 0.85rem;
+  }
+  .err {
+    color: #b3261e;
+  }
+  .who {
+    display: grid;
+    gap: 0.8rem;
+    max-width: 22rem;
+    margin: 12vh auto 0;
+    text-align: center;
+  }
+
+  /* ---- duel */
+  .progress {
+    display: flex;
+    gap: 4px;
+  }
+  .progress span {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--line);
+  }
+  .progress span.on {
+    background: var(--ink-2);
+  }
+  .progress span.cur {
+    background: var(--ink-3);
+  }
+  .q {
+    text-align: center;
+    font-size: clamp(1.3rem, 1rem + 1.5vw, 1.9rem);
+  }
+  .duel {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0.9rem;
+    align-items: stretch;
+    animation: in 0.25s var(--ease);
+  }
+  @keyframes in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+  .vs {
+    align-self: center;
+    font-family: var(--font-display);
+    font-weight: 800;
+    color: var(--ink-3);
+  }
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    background: var(--card);
+    border-radius: 22px;
+    padding: 1.3rem;
+    border: 3px solid transparent;
+    box-shadow: 0 24px 50px -30px rgba(27, 36, 48, 0.45), 0 0 0 1px rgba(27, 36, 48, 0.06);
+    cursor: pointer;
+    transition: transform 0.2s var(--ease), border-color 0.15s, opacity 0.2s;
+    min-height: 16rem;
+    max-height: 62dvh;
+    overflow: hidden;
+  }
+  .card:hover {
+    border-color: var(--should);
+    transform: translateY(-3px);
+  }
+  .card:active {
+    transform: scale(0.98);
+  }
+  .card.win {
+    border-color: var(--should);
+    transform: scale(1.03);
+  }
+  .card.lose {
+    opacity: 0.3;
+    transform: scale(0.96);
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+  }
+  .ini {
+    font-size: 0.75rem;
+    font-weight: 750;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+  }
+  .ini {
+    background: var(--paper-2);
+    color: var(--ink-2);
+  }
+  kbd {
+    margin-left: auto;
+    font-family: var(--font-code);
+    font-size: 0.75rem;
+    color: var(--ink-3);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0 0.35rem;
+  }
+  .name {
+    font-family: var(--font-display);
+    font-weight: 750;
+    font-size: clamp(1.35rem, 1rem + 1.4vw, 1.9rem);
+    line-height: 1.1;
+  }
+  .next {
+    font-weight: 650;
+    font-size: 1.05rem;
+    padding: 0.5rem 0.7rem;
+    border-radius: 12px;
+    background: var(--should-soft);
+  }
+  .next {
+    display: grid;
+    gap: 0.15rem;
+  }
+  .next b {
+    color: var(--should);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .step {
+    font-weight: 500;
+    font-size: 0.95rem;
+  }
+  .step.first {
+    font-weight: 700;
+    font-size: 1.02rem;
+  }
+
+  /* ---- next steps for the top projects */
+  .tops {
+    display: grid;
+    gap: 0.7rem;
+  }
+  .ask {
+    display: grid;
+    gap: 0.5rem;
+    background: var(--card);
+    border-radius: 16px;
+    padding: 1rem;
+    border: 2px solid var(--should-soft);
+  }
+  .ask.open {
+    border-color: var(--should);
+  }
+  .ask h3 {
+    font-size: 1.02rem;
+  }
+  .ask ol {
+    margin: 0;
+    padding-left: 1.3rem;
+    color: var(--ink-2);
+  }
+  .ask .field {
+    width: 100%;
+  }
+  .ask .row {
+    justify-content: flex-end;
+  }
+  .ask form {
+    display: grid;
+    gap: 0.5rem;
+  }
+  .walk {
+    max-width: 34rem;
+    width: 100%;
+    margin: 4vh auto 0;
+    padding: 1.4rem;
+  }
+  .walk h1 {
+    font-size: clamp(1.5rem, 1rem + 2vw, 2.2rem);
+  }
+  .dontget-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: auto;
+    padding-top: 0.4rem;
+  }
+  .dontget {
+    border: 1.5px dashed var(--fog);
+    background: transparent;
+    border-radius: 999px;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .dontget:hover,
+  .dontget.on {
+    border-style: solid;
+    border-color: var(--block);
+    color: var(--block);
+  }
+  .qq {
+    font-weight: 800;
+    color: var(--block);
+    letter-spacing: 0.08em;
+  }
+  .summary {
+    font-size: 1.05rem;
+    color: var(--ink-2);
+  }
+  .sec {
+    display: grid;
+    gap: 0.15rem;
+    font-size: 0.95rem;
+    color: var(--ink-2);
+  }
+  .sec b {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-3);
+  }
+  .sec .md {
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .done {
+    text-align: center;
+    display: grid;
+    gap: 0.6rem;
+    justify-items: center;
+    padding-top: 5vh;
+  }
+  .row {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+  }
+
+  /* ---- ranking */
+  .head {
+    display: flex;
+    justify-content: space-between;
+  }
+  .rank {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.4rem;
+  }
+  .rank li {
+    display: grid;
+    grid-template-columns: 2rem 1fr auto 3.4rem;
+    gap: 0.75rem;
+    align-items: center;
+    background: var(--card);
+    border-radius: 14px;
+    padding: 0.7rem 0.9rem;
+    box-shadow: 0 0 0 1px rgba(27, 36, 48, 0.06);
+  }
+  .rank li.quiet {
+    opacity: 0.55;
+  }
+  .rank li.infocus {
+    box-shadow: 0 0 0 1.5px var(--should-soft), 0 8px 20px -14px rgba(47, 138, 91, 0.5);
+  }
+  .rank li.waits {
+    opacity: 0.4;
+    filter: grayscale(1);
+  }
+  .rank li.waits:hover {
+    opacity: 0.85;
+    filter: none;
+  }
+  .rank li.focusline {
+    display: block;
+    background: none;
+    box-shadow: none;
+    padding: 0.5rem 0.2rem 0.2rem;
+    font-size: 0.8rem;
+    font-weight: 750;
+    color: var(--should);
+    border-top: 2px dashed var(--should-soft);
+    border-radius: 0;
+  }
+  .n {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 1.15rem;
+    color: var(--ink-3);
+    text-align: right;
+  }
+  .who-row {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+  .who-row a {
+    font-weight: 750;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .sub {
+    font-size: 0.8rem;
+    color: var(--ink-3);
+  }
+  .split {
+    color: var(--must);
+    margin-left: 0.3rem;
+  }
+  .elo {
+    font-family: var(--font-code);
+    font-weight: 700;
+  }
+  .delta {
+    font-family: var(--font-code);
+    font-size: 0.82rem;
+    color: var(--ink-3);
+    text-align: right;
+  }
+  .delta.upd {
+    color: var(--should);
+  }
+  .delta.dn {
+    color: #b3261e;
+  }
+  /* ---- buttons you press: soft, raised, they press in (neumorphic) */
+  .pulse {
+    --raise: 4px 4px 10px rgba(27, 36, 48, 0.14), -4px -4px 10px rgba(255, 255, 255, 0.95), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    --press: inset 3px 3px 7px rgba(27, 36, 48, 0.18), inset -3px -3px 7px rgba(255, 255, 255, 0.85);
+  }
+  .pulse :global(.btn) {
+    height: auto;
+    min-height: 2.9rem;
+    padding: 0.55rem 1.25rem;
+    gap: 0.5rem;
+    justify-content: center;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    background: linear-gradient(160deg, #ffffff 0%, #e9edeb 100%);
+    color: var(--ink);
+    font-weight: 750;
+    font-size: 0.98rem;
+    box-shadow: var(--raise);
+    transition: box-shadow 0.12s, transform 0.08s, filter 0.12s;
+  }
+  .pulse :global(.btn:hover) {
+    border-color: rgba(255, 255, 255, 0.8);
+    filter: brightness(1.02);
+    transform: translateY(-1px);
+  }
+  .pulse :global(.btn:active) {
+    box-shadow: var(--press);
+    transform: translateY(1px);
+  }
+  .pulse :global(.btn.primary) {
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.25);
+    background: linear-gradient(160deg, #42ab74 0%, #2a7d52 100%);
+    box-shadow: 4px 4px 12px rgba(42, 125, 82, 0.4), -4px -4px 10px rgba(255, 255, 255, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+  }
+  .pulse :global(.btn.primary:active) {
+    box-shadow: inset 3px 3px 8px rgba(0, 0, 0, 0.28), inset -2px -2px 6px rgba(255, 255, 255, 0.15);
+  }
+  .ico {
+    font-size: 1.05em;
+    line-height: 1;
+  }
+  .key {
+    font-family: var(--font-code);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--ink-3);
+    padding: 0.05rem 0.35rem;
+    border-radius: 6px;
+    background: var(--paper);
+    box-shadow: inset 1px 1px 2px rgba(27, 36, 48, 0.15), inset -1px -1px 2px rgba(255, 255, 255, 0.9);
+  }
+  /* the switch: a pressed-in track with a raised pill */
+  .seg {
+    background: var(--paper);
+    box-shadow: var(--press);
+    padding: 0.25rem;
+  }
+  .seg button.on {
+    background: linear-gradient(160deg, #ffffff 0%, #eef1ef 100%);
+    box-shadow: 3px 3px 7px rgba(27, 36, 48, 0.14), -2px -2px 6px rgba(255, 255, 255, 0.9);
+  }
+  /* the cards are the biggest buttons: raised, and they press in */
+  .card {
+    background: linear-gradient(165deg, #ffffff 0%, #f6f8f7 100%);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 8px 8px 22px rgba(27, 36, 48, 0.13), -8px -8px 20px rgba(255, 255, 255, 0.95), inset 0 1px 0 #fff;
+  }
+  .card:hover {
+    border-color: rgba(47, 138, 91, 0.55);
+  }
+  .card:active {
+    transform: scale(0.985);
+    box-shadow: inset 4px 4px 12px rgba(27, 36, 48, 0.12), inset -4px -4px 12px rgba(255, 255, 255, 0.9);
+  }
+
+  /* phone: the duel is one screen; header one row, two equal cards, actions at the thumb */
+  @media (max-width: 680px) {
+    .pulse {
+      gap: 0.6rem;
+      padding: 0 0.75rem;
+    }
+    .pulse.duelling {
+      height: 100dvh;
+      overflow: hidden;
+    }
+    /* only the cards give way; header, question, actions and card text keep their size */
+    .pulse.duelling > :not(.duel) {
+      flex-shrink: 0;
+    }
+    .card > * {
+      flex-shrink: 0;
+    }
+    .bar {
+      flex-wrap: nowrap;
+      gap: 0.5rem;
+      padding: 0.6rem 0 0.2rem;
+    }
+    .wide,
+    .ini,
+    kbd,
+    .tap {
+      display: none;
+    }
+    .back {
+      font-size: 1.3rem;
+      padding: 0 0.3rem;
+    }
+    .title {
+      min-width: 0;
+      font-size: 0.95rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .seg button {
+      padding: 0.3rem 0.7rem;
+      font-size: 0.9rem;
+    }
+    .q {
+      font-size: 1.15rem;
+    }
+    .duel {
+      position: relative;
+      flex: 1 1 0;
+      min-height: 0;
+      grid-template-columns: 1fr;
+      grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 0.6rem;
+    }
+    .vs {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      translate: -50% -50%;
+      z-index: 2;
+      width: 2.4rem;
+      height: 2.4rem;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--paper);
+      font-size: 0.85rem;
+      box-shadow: 0 0 0 4px var(--paper);
+    }
+    .card {
+      min-height: 0;
+      max-height: none;
+      padding: 0.9rem 1rem;
+      gap: 0.45rem;
+      border-radius: 18px;
+      /* long text fades out instead of being cut mid-line */
+      mask-image: linear-gradient(to bottom, #000 calc(100% - 2.2rem), transparent calc(100% - 0.4rem));
+    }
+    .card:hover {
+      transform: none;
+    }
+    .name {
+      font-size: 1.3rem;
+    }
+    .summary {
+      font-size: 0.95rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .next {
+      padding: 0.35rem 0.6rem;
+    }
+    .step {
+      font-size: 0.88rem;
+    }
+    .step.first {
+      font-size: 0.95rem;
+    }
+    .sec {
+      font-size: 0.88rem;
+    }
+    .sec .md {
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+    }
+    .foot {
+      padding: 0.2rem 0 calc(0.6rem + env(safe-area-inset-bottom));
+    }
+    .foot :global(.btn) {
+      flex: 1;
+    }
+    .key {
+      display: none;
+    }
+    .walk {
+      margin-top: 1rem;
+    }
+  }
+</style>

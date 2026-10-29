@@ -1,0 +1,12 @@
+{
+  "name": "omg-product",
+  "owner": { "name": "Goscha Graf", "url": "https://github.com/JustGoscha" },
+  "description": "omg·product: a product-management harness for coding agents",
+  "plugins": [
+    {
+      "name": "omgp",
+      "source": { "source": "github", "repo": "JustGoscha/omg-product", "ref": "release" },
+      "description": "Skills, the omgp CLI and the studio. Built from main on every push; new versions arrive by auto-update."
+    }
+  ]
+}

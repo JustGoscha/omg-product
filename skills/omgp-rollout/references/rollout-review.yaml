@@ -1,0 +1,120 @@
+# Example rollout review for "recurring-jobs" (Acme Field).
+# File: projects/recurring-jobs/sessions/rollout-review.yaml
+# About 30 minutes.
+
+id: rollout-review
+title: Recurring jobs — 4 weeks after release
+kind: rollout-review
+status: planned
+date: 2026-12-16
+duration: 30
+goal: Decide whether recurring jobs is done, needs another round, or goes.
+participants:
+  - { name: Priya, role: Head of Product, kind: decider }
+  - { name: Jonas, role: Tech lead, kind: tech }
+  - { name: Lea, role: Customer success, kind: expert }
+  - { name: Marco, role: Dispatcher at Harbor Facility Services, kind: user }
+
+sections:
+  - id: goal
+    title: What we wanted
+    phase: context
+    steps:
+      - id: s-goal
+        type: slide
+        title: "Goal: from 90 to 15 minutes a week"
+        body: Dispatchers set up a repeat once; the app creates the visits.
+
+  - id: numbers
+    title: What happened
+    phase: problem
+    steps:
+      - id: s-funnel
+        type: slide
+        title: 27 of 52 beta dispatchers use series every week
+        body: |
+          4 weeks, 6 beta accounts. Minutes are self-reported.
+        visual:
+          type: matrix
+          columns: [Count, Share]
+          rows:
+            - [Saw the feature, "41", "79%"]
+            - [Created a series, "33", "63%"]
+            - [Used again in a later week, "27", "52%"]
+        notes: Source PostHog insight 4413, window 2026-11-16 → 2026-12-13.
+      - id: s-metric
+        type: slide
+        title: "Users of series: 90 → 22 minutes a week"
+        visual:
+          type: matrix
+          columns: [Baseline, Now, Target]
+          rows:
+            - [Minutes per week re-creating jobs, "90", "22", "15"]
+            - [job_duplicated per account per week, "52", "14", "–"]
+            - [Forgotten visits per month, "~4", "1", "0"]
+      - id: s-heard
+        type: slide
+        title: What dispatchers said
+        body: |
+          - "I didn't find where to turn a job into a series." (Harbor)
+          - "The suggestions were 9 out of 10 right." (Northgate)
+          - "I need to pause it over Christmas." (St. Mary's)
+      - id: p-solved
+        type: poll
+        title: Is the problem solved for dispatchers?
+        answers: [yes, partly, no]
+
+  - id: fixes
+    title: What to fix next
+    phase: solution
+    steps:
+      - id: t-discover
+        type: triage
+        title: '"Repeat" button directly on the job, not in the menu'
+        level: ux
+      - id: t-pause
+        type: triage
+        title: Pause a series over holidays
+        level: product
+      - id: t-suggest-again
+        type: triage
+        title: Show suggestions again for jobs copied after release
+        level: product
+
+  - id: decide
+    title: Decision
+    phase: decisions
+    steps:
+      - id: d-outcome
+        type: choice
+        title: Done, another round, or stop?
+        body: |
+          Users of series almost reach the target; half of the dispatchers don't use it yet.
+        level: product
+        decider: [decider]
+        timing: now
+        reversibility: two-way
+        recommended: iterate
+        because: Fix discoverability and pause, measure again in 4 weeks.
+        visual:
+          type: matrix
+          columns: [Done, Iterate, Drop]
+          rows:
+            - [Metric for users of series, "22 vs 15", "22 vs 15", "22 vs 15"]
+            - [Next step, close project, 2 issues + re-measure, remove feature]
+            - [Effort, "–", "~3 days", "~2 days"]
+        options:
+          - { id: done, label: Done, summary: "Close the project; fixes go to the backlog" }
+          - { id: iterate, label: Another round, summary: "Fix discoverability and pause; measure again in 4 weeks", effort: s }
+          - { id: drop, label: Stop, summary: "Turn the flag off and remove the feature", forecloses: [Series for the 27 dispatchers who use it] }
+
+  - id: wrap
+    title: Next steps
+    phase: wrapup
+    steps:
+      - id: s-next
+        type: slide
+        title: Next steps
+        body: |
+          - Issues for the must-fixes — Dana, this week
+          - Re-measure — Dana, 2027-01-20

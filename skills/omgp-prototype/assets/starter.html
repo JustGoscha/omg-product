@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recurring jobs — series</title>
+<meta name="description" content="Dispatcher sets up a repeating maintenance job and sees the upcoming visits.">
+<link rel="stylesheet" href="../../../brand/tokens.css">
+<!--
+  omgp prototype starter. Copy to projects/<id>/prototypes/<name>.html and replace content.
+
+  states (URL hash; no hash = first state):
+    #overview        upcoming visits of all series
+    #edit-series     edit form of one series
+    #scope-dialog    "change only this visit or all future visits?"
+    #after-3-months  overview after the simulate event "3 months pass"
+
+  focus hooks (data-focus, keep names stable once a session uses them):
+    series-list, repeat-picker, scope-dialog, horizon-note
+-->
+<style>
+  /* Map to the variable names in brand/tokens.css. Fallbacks keep the file usable without it. */
+  :root {
+    --bg: var(--color-bg, #f6f7f9);
+    --surface: var(--color-surface, #ffffff);
+    --text: var(--color-text, #1b1f24);
+    --muted: var(--color-muted, #5f6b7a);
+    --accent: var(--color-accent, #2f6fed);
+    --line: var(--color-border, #e3e7ec);
+    --radius: var(--radius-md, 8px);
+    --font: var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 var(--font); color: var(--text); background: var(--bg); }
+  header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  main { max-width: 960px; margin: 0 auto; padding: 20px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .btn { display: inline-block; padding: 8px 14px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); color: var(--text); text-decoration: none; cursor: pointer; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .overlay { position: fixed; inset: 0; background: rgb(0 0 0 / .35); display: grid; place-items: center; }
+  .dialog { background: var(--surface); border-radius: var(--radius); padding: 20px; width: min(440px, 92vw); }
+  .dialog label { display: block; padding: 8px 0; }
+  .sim { position: fixed; left: 12px; bottom: 12px; font-size: 12px; background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius); padding: 6px 10px; }
+  .sim a { display: block; padding: 4px 0; color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <strong>Acme Field</strong>
+  <span class="muted" id="today"></span>
+</header>
+<main id="app"></main>
+
+<details class="sim">
+  <summary>Simulate</summary>
+  <a href="#after-3-months">3 months pass</a>
+  <a href="#overview">Back to today</a>
+</details>
+
+<script>
+  // Realistic data in the product's language. Dates near product.yaml `today`.
+  const TODAY = '2026-10-14';
+  const series = [
+    { id: 's-1', title: 'Boiler service', customer: 'Harbor Bakery', address: '12 Mill Street, Leeds', every: 'Every 3 months', next: '2026-11-14', tech: 'Ali Karimi' },
+    { id: 's-2', title: 'Elevator safety check', customer: 'Northgate Offices (Building B, entrance via loading bay)', address: '220 Northgate Road, Leeds', every: 'Every 6 months', next: '2026-10-21', tech: 'Sam Okafor' },
+    { id: 's-3', title: 'Air filter change', customer: 'St. Mary’s Primary School', address: '4 Church Lane, Otley', every: 'Every month', next: '2026-10-16', tech: 'Unassigned' },
+  ];
+
+  const fmt = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const addMonths = (iso, n) => { const d = new Date(iso); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 10); };
+
+  function overview(today) {
+    const next = (s) => today === TODAY ? s.next : addMonths(s.next, 3);
+    return `
+      <h1>Recurring jobs</h1>
+      <p class="muted" data-focus="horizon-note">Visits are created 3 months ahead. ${series.length} series, next visit ${fmt(next(series[2]))}.</p>
+      <div class="card" data-focus="series-list">
+        ${series.map(s => `
+          <div class="row">
+            <div><strong>${s.title}</strong><br><span class="muted">${s.customer} · ${s.every}</span></div>
+            <div style="text-align:right">${fmt(next(s))}<br><span class="muted">${s.tech}</span></div>
+          </div>`).join('')}
+      </div>
+      <a class="btn primary" href="#edit-series">Edit "Boiler service"</a>`;
+  }
+
+  function editSeries() {
+    const s = series[0];
+    return `
+      <h1>${s.title} — ${s.customer}</h1>
+      <div class="card">
+        <p class="muted">${s.address}</p>
+        <div data-focus="repeat-picker">
+          <label>Repeats <select><option selected>Every 3 months</option><option>Every month</option><option>Every 6 months</option></select></label>
+          <label style="margin-left:16px">Time <input type="time" value="09:00"></label>
+        </div>
+      </div>
+      <a class="btn primary" href="#scope-dialog">Save</a> <a class="btn" href="#overview">Cancel</a>`;
+  }
+
+  const states = {
+    'overview': () => overview(TODAY),
+    'edit-series': editSeries,
+    'scope-dialog': () => editSeries() + `
+      <div class="overlay"><div class="dialog" data-focus="scope-dialog">
+        <h2>Change the time to 08:00?</h2>
+        <label><input type="radio" name="scope" checked> Only this visit (14 Nov)</label>
+        <label><input type="radio" name="scope"> This and all future visits (7 visits)</label>
+        <p><a class="btn primary" href="#overview">Apply</a> <a class="btn" href="#edit-series">Cancel</a></p>
+      </div></div>`,
+    'after-3-months': () => overview(addMonths(TODAY, 3)),
+    // decision variants: what happens when a series changes
+    'scope-ask': () => editSeries() + `
+      <div class="overlay"><div class="dialog" data-focus="scope-dialog">
+        <h2>Change the time to 08:00?</h2>
+        <label><input type="radio" name="scope" checked> Only this visit (14 Nov)</label>
+        <label><input type="radio" name="scope"> This and all future visits (7 visits)</label>
+        <p><a class="btn primary" href="#overview">Apply</a> <a class="btn" href="#edit-series">Cancel</a></p>
+      </div></div>`,
+    'scope-future-only': () => editSeries() + `
+      <div class="overlay"><div class="dialog" data-focus="scope-dialog">
+        <h2>Time changed to 08:00</h2>
+        <p>All 7 future visits of “Boiler service” now start at 08:00. Visits already done stay as they were.</p>
+        <p class="muted">Only one visit is different? Open that visit and move it there.</p>
+        <p><a class="btn primary" href="#overview">OK</a> <a class="btn" href="#edit-series">Undo</a></p>
+      </div></div>`,
+  };
+
+  function render() {
+    const name = location.hash.slice(1) || Object.keys(states)[0];
+    const state = states[name] ? name : Object.keys(states)[0];
+    document.getElementById('today').textContent = 'Today: ' + fmt(state === 'after-3-months' ? addMonths(TODAY, 3) : TODAY);
+    document.getElementById('app').innerHTML = states[state]();
+  }
+  addEventListener('hashchange', render);
+  render();
+</script>
+</body>
+</html>
